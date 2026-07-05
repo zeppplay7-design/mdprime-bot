@@ -34,6 +34,17 @@ $user_state = $states[$chat_id] ?? "";
 
 $msg = "";
 
+
+/* EFECTO ESCRIBIENDO */
+file_get_contents(
+    "https://api.telegram.org/bot".$token."/sendChatAction?".
+    http_build_query([
+        "chat_id" => $chat_id,
+        "action" => "typing"
+    ])
+);
+
+
 switch($command){
 
     case "/start":
@@ -46,6 +57,7 @@ Selecciona una opción:
 /planes
 /referidos
 /apps
+/apkdescargas
 /renovar
 /pagar
 /soporte";
@@ -109,11 +121,63 @@ La V9 es la más nueva.
 ⚡ V8 → 6541023";
     break;
 
+    case "/apkdescargas":
+
+        $msg = "📲 APK DESCARGAS MDPRIME
+
+Selecciona la versión que quieras descargar:";
+
+        $url = "https://api.telegram.org/bot".$token."/sendMessage";
+
+        $data = [
+            "chat_id" => $chat_id,
+            "text" => $msg,
+            "reply_markup" => json_encode([
+                "inline_keyboard" => [
+                    [
+                        [
+                            "text" => "🔥 V9",
+                            "url" => "https://www.mediafire.com/file_premium/052b95nxpghvvxd/MDPRIME_V9.apk/file"
+                        ]
+                    ],
+                    [
+                        [
+                            "text" => "📺 OTT",
+                            "url" => "https://www.mediafire.com/file_premium/uqag8a35t45367k/ott-p2p.apk/file"
+                        ]
+                    ],
+                    [
+                        [
+                            "text" => "⚡ V8",
+                            "url" => "https://www.mediafire.com/file_premium/sh6zfsswt2tamdk/P2P_v8_V808M.apk/file"
+                        ]
+                    ]
+                ]
+            ])
+        ];
+
+        $options = [
+            "http" => [
+                "header"  => "Content-type: application/x-www-form-urlencoded",
+                "method"  => "POST",
+                "content" => http_build_query($data),
+            ]
+        ];
+
+        $context = stream_context_create($options);
+        file_get_contents($url, false, $context);
+
+        http_response_code(200);
+        exit;
+    break;
+
     case "/renovar":
         $states[$chat_id] = "renovar";
         file_put_contents($state_file, json_encode($states));
 
-        $msg = "🔄 Envíame tu usuario MDPRIME para revisar tu renovación.";
+        $msg = "⏳ Preparando renovación...
+
+🔄 Envíame tu usuario MDPRIME para revisar tu renovación.";
     break;
 
     case "/pagar":
@@ -128,7 +192,9 @@ Después envía el comprobante.";
         $states[$chat_id] = "soporte";
         file_put_contents($state_file, json_encode($states));
 
-        $msg = "🛠 Describe tu problema con detalle.";
+        $msg = "⏳ Preparando soporte...
+
+🛠 Describe tu problema con detalle.";
     break;
 
     default:
@@ -183,6 +249,7 @@ Usa:
 /planes
 /referidos
 /apps
+/apkdescargas
 /renovar
 /pagar
 /soporte";
