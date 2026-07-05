@@ -121,6 +121,7 @@ Selecciona una opción:
 /planes
 /referidos
 /apps
+/agenda
 /renovar
 /pagar
 /soporte";
@@ -199,14 +200,70 @@ https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N
 Después envía el comprobante.";
     break;
 
-    case "/soporte":
+case "/soporte":
         $states[$chat_id] = "soporte";
         file_put_contents($state_file, json_encode($states));
 
         $msg = "🛠 Describe tu problema con detalle.";
     break;
 
-    default:
+/* =========================
+   AGENDA DEPORTIVA
+========================= */
+
+case "/agenda":
+
+    $json = @file_get_contents("https://paneles-de-administracion.nfy.fyi/marca-eventos.php?json=1");
+
+    if(!$json){
+
+        $msg = "❌ No se ha podido cargar la agenda deportiva.";
+
+    }else{
+
+        $agenda = json_decode($json, true);
+
+        if(empty($agenda["events"])){
+
+            $msg = "⚠️ No hay eventos disponibles.";
+
+        }else{
+
+            $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n\n";
+
+            $i = 0;
+
+            foreach($agenda["events"] as $e){
+
+                if($i >= 15) break;
+
+                $msg .= "🕒 ".$e["hora"]."\n";
+
+                if(!empty($e["deporte"]))
+                    $msg .= "🏅 ".$e["deporte"]."\n";
+
+                if(!empty($e["competicion"]))
+                    $msg .= "🏆 ".$e["competicion"]."\n";
+
+                if(!empty($e["evento"]))
+                    $msg .= "📌 ".$e["evento"]."\n";
+
+                if(!empty($e["canal"]))
+                    $msg .= "📺 ".$e["canal"]."\n";
+
+                $msg .= "\n";
+
+                $i++;
+
+            }
+
+        }
+
+    }
+
+break;
+
+default:
 
         /* MODO RENOVAR */
         if($user_state == "renovar"){
@@ -264,6 +321,7 @@ Usa:
 /planes
 /referidos
 /apps
+/agenda
 /renovar
 /pagar
 /soporte";
