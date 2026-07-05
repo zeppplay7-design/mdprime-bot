@@ -20,7 +20,8 @@ if (!isset($update["message"])) {
 
 $chat_id = $update["message"]["chat"]["id"];
 $text = trim($update["message"]["text"]);
-$command = strtolower($text);
+$command = strtolower(trim(explode(" ", $text)[0]));
+$command = explode("@", $command)[0];
 
 $states = file_exists($state_file) ? json_decode(file_get_contents($state_file), true) : [];
 $user_state = $states[$chat_id] ?? "";
