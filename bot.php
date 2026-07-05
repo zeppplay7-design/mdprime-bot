@@ -85,24 +85,9 @@ Clientes 20+
 12 Meses → 45€";
     break;
 
-    case "/iptv":
-        $msg = "📡 IPTV / P2P
-
-1 Mes → 10€
-3 Meses → 25€
-6 Meses → 45€
-12 Meses → 80€
-
-P2P + Plex/Emby
-
-1 Mes → 15€
-3 Meses → 40€
-6 Meses → 75€
-12 Meses → 150€";
-    break;
 
     case "/renovar":
-        $msg = "🔄 ENVÍA TU USUARIO O CORREO PARA RENOVAR TU CUENTA.";
+        $msg = "🔄 ENVÍA TU USUARIO PARA RENOVAR TU CUENTA.";
     break;
 
     case "/pagar":
