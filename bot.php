@@ -26,6 +26,20 @@ $states = file_exists($state_file) ? json_decode(file_get_contents($state_file),
 $user_state = $states[$chat_id] ?? "";
 
 $msg = "";
+/* =========================
+   MENSAJE DE ESPERA
+========================= */
+
+$response = file_get_contents(
+    "https://api.telegram.org/bot".$token."/sendMessage?".
+    http_build_query([
+        "chat_id" => $chat_id,
+        "text" => "⏳ Procesando tu solicitud..."
+    ])
+);
+
+$temp = json_decode($response, true);
+$tempMessageId = $temp["result"]["message_id"] ?? null;
 
 
 /* =========================
@@ -256,7 +270,21 @@ Usa:
 
         }
 }
+/* =========================
+   BORRAR MENSAJE DE ESPERA
+========================= */
 
+if($tempMessageId){
+
+    file_get_contents(
+        "https://api.telegram.org/bot".$token."/deleteMessage?".
+        http_build_query([
+            "chat_id" => $chat_id,
+            "message_id" => $tempMessageId
+        ])
+    );
+
+}
 
 /* =========================
    RESPUESTA FINAL
