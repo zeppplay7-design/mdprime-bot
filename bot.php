@@ -1,6 +1,8 @@
 <?php
 
 $token = "8445421276:AAEgTw6jjvEI98YgnN9wZsAzE6MM8ajj_AQ";
+$admin_id = "372918983";
+$state_file = "states.json";
 
 $content = file_get_contents("php://input");
 
@@ -17,11 +19,15 @@ if (!isset($update["message"])) {
 }
 
 $chat_id = $update["message"]["chat"]["id"];
-$text = strtolower(trim($update["message"]["text"]));
+$text = trim($update["message"]["text"]);
+$command = strtolower($text);
+
+$states = file_exists($state_file) ? json_decode(file_get_contents($state_file), true) : [];
+$user_state = $states[$chat_id] ?? "";
 
 $msg = "";
 
-switch($text){
+switch($command){
 
     case "/start":
         $msg = "🔥 BIENVENIDO A MDPRIME OTT 🔥
@@ -97,7 +103,10 @@ La V9 es la más nueva.
     break;
 
     case "/renovar":
-        $msg = "🔄 ENVÍA TU USUARIO PARA RENOVAR TU CUENTA.";
+        $states[$chat_id] = "renovar";
+        file_put_contents($state_file, json_encode($states));
+
+        $msg = "🔄 Envíame tu usuario MDPRIME para revisar tu renovación.";
     break;
 
     case "/pagar":
@@ -109,11 +118,59 @@ Después envía el comprobante.";
     break;
 
     case "/soporte":
-        $msg = "🛠 Escribe tu consulta y te responderemos.";
+        $states[$chat_id] = "soporte";
+        file_put_contents($state_file, json_encode($states));
+
+        $msg = "🛠 Describe tu problema con detalle.";
     break;
 
     default:
-        $msg = "❌ Comando no reconocido.
+
+        if($user_state == "renovar"){
+
+            $admin_msg = "🔄 NUEVA RENOVACIÓN
+
+Usuario: ".$text."
+
+Chat ID: ".$chat_id;
+
+            file_get_contents(
+                "https://api.telegram.org/bot".$token."/sendMessage?".
+                http_build_query([
+                    "chat_id" => $admin_id,
+                    "text" => $admin_msg
+                ])
+            );
+
+            unset($states[$chat_id]);
+            file_put_contents($state_file, json_encode($states));
+
+            $msg = "✅ Solicitud de renovación enviada. Te responderemos pronto.";
+
+        } elseif($user_state == "soporte"){
+
+            $admin_msg = "🛠 NUEVO SOPORTE
+
+Mensaje: ".$text."
+
+Chat ID: ".$chat_id;
+
+            file_get_contents(
+                "https://api.telegram.org/bot".$token."/sendMessage?".
+                http_build_query([
+                    "chat_id" => $admin_id,
+                    "text" => $admin_msg
+                ])
+            );
+
+            unset($states[$chat_id]);
+            file_put_contents($state_file, json_encode($states));
+
+            $msg = "✅ Soporte recibido. Te responderemos pronto.";
+
+        } else {
+
+            $msg = "❌ Comando no reconocido.
 
 Usa:
 /planes
@@ -122,6 +179,7 @@ Usa:
 /renovar
 /pagar
 /soporte";
+        }
 }
 
 $url = "https://api.telegram.org/bot".$token."/sendMessage";
