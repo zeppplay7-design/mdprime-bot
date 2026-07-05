@@ -27,6 +27,35 @@ $user_state = $states[$chat_id] ?? "";
 
 $msg = "";
 
+
+// SISTEMA DE RESPUESTA PRIVADA
+if(strpos($command, "/reply ") === 0){
+
+    $parts = explode(" ", $text, 3);
+
+    if(count($parts) >= 3){
+
+        $reply_chat = $parts[1];
+        $reply_msg = $parts[2];
+
+        file_get_contents(
+            "https://api.telegram.org/bot".$token."/sendMessage?".
+            http_build_query([
+                "chat_id" => $reply_chat,
+                "text" => "📩 SOPORTE MDPRIME:\n\n".$reply_msg
+            ])
+        );
+
+        $msg = "✅ Mensaje enviado correctamente.";
+
+    } else {
+
+        $msg = "Uso correcto:\n/reply CHATID mensaje";
+
+    }
+
+} else {
+
 switch($command){
 
     case "/start":
@@ -179,7 +208,9 @@ Usa:
 /renovar
 /pagar
 /soporte";
+
         }
+}
 }
 
 $url = "https://api.telegram.org/bot".$token."/sendMessage";
