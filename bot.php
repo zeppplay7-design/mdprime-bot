@@ -32,7 +32,6 @@ Selecciona una opción:
 
 /planes
 /referidos
-/iptv
 /renovar
 /pagar
 /soporte";
@@ -85,17 +84,14 @@ Clientes 20+
 12 Meses → 45€";
     break;
 
-
     case "/renovar":
-        $msg = "🔄 ENVÍA TU USUARIO PARA RENOVAR TU CUENTA.";
+        $msg = "🔄 ENVÍA TU USUARIO O CORREO PARA RENOVAR TU CUENTA.";
     break;
 
     case "/pagar":
         $msg = "💳 PAGO SEGURO MDPRIME:
 
-https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N
-
-Después envía el comprobante.";
+https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N";
     break;
 
     case "/soporte":
@@ -108,7 +104,6 @@ Después envía el comprobante.";
 Usa:
 /planes
 /referidos
-/iptv
 /renovar
 /pagar
 /soporte";
@@ -121,17 +116,13 @@ $data = [
     "text" => $msg
 ];
 
-$options = [
-    "http" => [
-        "header"  => "Content-type: application/x-www-form-urlencoded",
-        "method"  => "POST",
-        "content" => http_build_query($data),
-    ]
-];
-
-$context = stream_context_create($options);
-
-file_get_contents($url, false, $context);
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $url);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_exec($ch);
+curl_close($ch);
 
 http_response_code(200);
 exit;
