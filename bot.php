@@ -112,9 +112,9 @@ if(strpos($command, "/reply ") === 0){
 switch($command){
 
     case "/start":
-        $msg = "🔥 BIENVENIDO A MDPRIME OTT 🔥
+        $msg = "🔥 BIENVENIDO A MDPRIME 🔥
 
-📺 THE BEST STREAM
+📺 BOT AUTOMATIZADO
 
 Selecciona una opción:
 
