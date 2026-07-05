@@ -28,25 +28,38 @@ $user_state = $states[$chat_id] ?? "";
 $msg = "";
 
 
-/* RESPONDER A CLIENTE */
+/* =========================
+   RESPONDER A CLIENTE
+========================= */
 if(strpos($command, "/reply ") === 0){
 
     $parts = explode(" ", $text, 3);
 
     if(count($parts) >= 3){
 
-        $reply_chat = $parts[1];
-        $reply_msg = $parts[2];
+        $reply_chat = trim($parts[1]);
+        $reply_msg = trim($parts[2]);
 
-        file_get_contents(
-            "https://api.telegram.org/bot".$token."/sendMessage?".
-            http_build_query([
-                "chat_id" => $reply_chat,
-                "text" => "📩 SOPORTE MDPRIME:\n\n".$reply_msg
-            ])
-        );
+        $reply_url = "https://api.telegram.org/bot".$token."/sendMessage";
 
-        $msg = "✅ Mensaje enviado.";
+        $reply_data = [
+            "chat_id" => $reply_chat,
+            "text" => "📩 SOPORTE MDPRIME:\n\n".$reply_msg
+        ];
+
+        $reply_options = [
+            "http" => [
+                "header"  => "Content-type: application/x-www-form-urlencoded",
+                "method"  => "POST",
+                "content" => http_build_query($reply_data),
+            ]
+        ];
+
+        $reply_context = stream_context_create($reply_options);
+
+        file_get_contents($reply_url, false, $reply_context);
+
+        $msg = "✅ Mensaje enviado correctamente.";
 
     } else {
 
@@ -55,8 +68,33 @@ if(strpos($command, "/reply ") === 0){
 
     }
 
-} else {
+    $url = "https://api.telegram.org/bot".$token."/sendMessage";
 
+    $data = [
+        "chat_id" => $chat_id,
+        "text" => $msg
+    ];
+
+    $options = [
+        "http" => [
+            "header"  => "Content-type: application/x-www-form-urlencoded",
+            "method"  => "POST",
+            "content" => http_build_query($data),
+        ]
+    ];
+
+    $context = stream_context_create($options);
+
+    file_get_contents($url, false, $context);
+
+    http_response_code(200);
+    exit;
+}
+
+
+/* =========================
+   COMANDOS PRINCIPALES
+========================= */
 switch($command){
 
     case "/start":
@@ -135,6 +173,7 @@ La V9 es la más nueva.
     case "/renovar":
         $states[$chat_id] = "renovar";
         file_put_contents($state_file, json_encode($states));
+
         $msg = "🔄 Envíame tu usuario MDPRIME para revisar tu renovación.";
     break;
 
@@ -149,11 +188,13 @@ Después envía el comprobante.";
     case "/soporte":
         $states[$chat_id] = "soporte";
         file_put_contents($state_file, json_encode($states));
+
         $msg = "🛠 Describe tu problema con detalle.";
     break;
 
     default:
 
+        /* MODO RENOVAR */
         if($user_state == "renovar"){
 
             $admin_msg = "🔄 NUEVA RENOVACIÓN
@@ -173,9 +214,12 @@ Chat ID: ".$chat_id;
             unset($states[$chat_id]);
             file_put_contents($state_file, json_encode($states));
 
-            $msg = "✅ Solicitud de renovación enviada.";
+            $msg = "✅ Solicitud de renovación enviada. Te responderemos pronto.";
 
-        } elseif($user_state == "soporte"){
+        }
+
+        /* MODO SOPORTE */
+        elseif($user_state == "soporte"){
 
             $admin_msg = "🛠 NUEVO SOPORTE
 
@@ -194,9 +238,11 @@ Chat ID: ".$chat_id;
             unset($states[$chat_id]);
             file_put_contents($state_file, json_encode($states));
 
-            $msg = "✅ Soporte recibido.";
+            $msg = "✅ Soporte recibido. Te responderemos pronto.";
 
-        } else {
+        }
+
+        else {
 
             $msg = "❌ Comando no reconocido.
 
@@ -210,7 +256,11 @@ Usa:
 
         }
 }
-}
+
+
+/* =========================
+   RESPUESTA FINAL
+========================= */
 
 $url = "https://api.telegram.org/bot".$token."/sendMessage";
 
