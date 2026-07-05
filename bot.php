@@ -28,7 +28,7 @@ $user_state = $states[$chat_id] ?? "";
 $msg = "";
 
 
-// SISTEMA DE RESPUESTA PRIVADA
+/* RESPONDER A CLIENTE */
 if(strpos($command, "/reply ") === 0){
 
     $parts = explode(" ", $text, 3);
@@ -46,11 +46,12 @@ if(strpos($command, "/reply ") === 0){
             ])
         );
 
-        $msg = "✅ Mensaje enviado correctamente.";
+        $msg = "✅ Mensaje enviado.";
 
     } else {
 
-        $msg = "Uso correcto:\n/reply CHATID mensaje";
+        $msg = "Uso correcto:
+/reply CHATID mensaje";
 
     }
 
@@ -134,7 +135,6 @@ La V9 es la más nueva.
     case "/renovar":
         $states[$chat_id] = "renovar";
         file_put_contents($state_file, json_encode($states));
-
         $msg = "🔄 Envíame tu usuario MDPRIME para revisar tu renovación.";
     break;
 
@@ -149,7 +149,6 @@ Después envía el comprobante.";
     case "/soporte":
         $states[$chat_id] = "soporte";
         file_put_contents($state_file, json_encode($states));
-
         $msg = "🛠 Describe tu problema con detalle.";
     break;
 
@@ -174,7 +173,7 @@ Chat ID: ".$chat_id;
             unset($states[$chat_id]);
             file_put_contents($state_file, json_encode($states));
 
-            $msg = "✅ Solicitud de renovación enviada. Te responderemos pronto.";
+            $msg = "✅ Solicitud de renovación enviada.";
 
         } elseif($user_state == "soporte"){
 
@@ -195,7 +194,7 @@ Chat ID: ".$chat_id;
             unset($states[$chat_id]);
             file_put_contents($state_file, json_encode($states));
 
-            $msg = "✅ Soporte recibido. Te responderemos pronto.";
+            $msg = "✅ Soporte recibido.";
 
         } else {
 
