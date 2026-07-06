@@ -168,6 +168,18 @@ break;
 12 Meses → 165€";
     break;
 
+case "/referidos?":
+
+    $msg = "👥 ¿QUÉ ES REFERIDOS?
+
+Planes de Referidos por Recomendación:
+
+Recomienda MDPRIME a tus amigos y gana recompensas por cada nuevo cliente que contrate gracias a ti.
+
+Cuantos más referidos activos tengas, mayores serán tus beneficios.";
+
+break;
+    
     case "/referidos":
         $msg = "🏆 REFERIDOS VIP
 
@@ -393,14 +405,15 @@ $data = [
                 ["text" => "/referidos"]
             ],
             [
-                ["text" => "/apps"],
-                ["text" => "/agenda"]
+                ["text" => "/queesreferidos"],
+                ["text" => "/apps"]
             ],
             [
-                ["text" => "/renovar"],
-                ["text" => "/pagar"]
+                ["text" => "/agenda"],
+                ["text" => "/renovar"]
             ],
             [
+                ["text" => "/pagar"],
                 ["text" => "/soporte"]
             ]
         ],
