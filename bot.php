@@ -235,12 +235,16 @@ case "/soporte":
 
 case "/agenda":
 
-$json = @file_get_contents("https://paneles-de-administracion.nfy.fyi/marca-eventos.php?json=1");
+$json = @file_get_contents("https://quiet-waterfall-830d.zeppplay7.workers.dev/");
 
 if($json === false){
-    $msg = "ERROR AL LEER LA URL";
+
+    $msg = "❌ No se pudo conectar con el Worker.";
+
 }else{
-    $msg = substr($json,0,3000);
+
+    $msg = substr(strip_tags($json), 0, 3500);
+
 }
 
 break;
