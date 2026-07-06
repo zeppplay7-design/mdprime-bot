@@ -235,7 +235,52 @@ case "/soporte":
 
 case "/agenda":
 
-    $msg = "🎉 AGENDA FUNCIONA";
+    $json = @file_get_contents("https://paneles-de-administracion.nfy.fyi/marca-eventos.php?json=1");
+
+    if(!$json){
+
+        $msg = "❌ No se ha podido conectar con la agenda deportiva.";
+
+    }else{
+
+        $agenda = json_decode($json, true);
+
+        if(!isset($agenda["events"]) || count($agenda["events"]) == 0){
+
+            $msg = "⚠️ No hay eventos disponibles.";
+
+        }else{
+
+            $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n";
+            $msg .= "━━━━━━━━━━━━━━━━━━\n\n";
+
+            $fecha_actual = "";
+
+            foreach($agenda["events"] as $e){
+
+                if($fecha_actual != $e["fecha"]){
+
+                    $fecha_actual = $e["fecha"];
+
+                    $msg .= "📅 ".$fecha_actual."\n\n";
+
+                }
+
+                $msg .= "🕒 ".$e["hora"]."\n";
+                $msg .= "🏅 ".$e["deporte"]."\n";
+                $msg .= "🏆 ".$e["competicion"]."\n";
+                $msg .= "📌 ".$e["evento"]."\n";
+                $msg .= "📺 ".$e["canal"]."\n\n";
+
+                if(strlen($msg) > 3500){
+                    break;
+                }
+
+            }
+
+        }
+
+    }
 
 break;
 
