@@ -237,9 +237,15 @@ case "/agenda":
 
 $json = @file_get_contents("https://paneles-de-administracion.nfy.fyi/marca-eventos.php?json=1");
 
-$msg = $json;
+if($json === false){
+    $msg = "ERROR AL LEER LA URL";
+}else{
+    $msg = substr($json,0,3000);
+}
 
 break;
+
+    
 default:
 
         /* MODO RENOVAR */
