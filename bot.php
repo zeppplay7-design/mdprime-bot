@@ -255,25 +255,29 @@ case "/agenda":
 
     foreach($agenda["events"] as $evento){
 
-        $msg .= "🕒 ".$evento["hora"]."\n";
-        $msg .= "🏅 ".$evento["deporte"]."\n";
-
-        if(!empty($evento["competicion"])){
-            $msg .= "🏆 ".$evento["competicion"]."\n";
-        }
-
-        $msg .= "📌 ".$evento["evento"]."\n";
-
-        if(!empty($evento["canal"])){
-            $msg .= "📺 ".$evento["canal"]."\n";
-        }
-
-        $msg .= "━━━━━━━━━━━━━━\n";
-
-        if(strlen($msg) > 3500){
-            break;
-        }
+    if(!empty($evento["fecha"])){
+        $msg .= "📅 ".$evento["fecha"]."\n";
     }
+
+    $msg .= "🕒 ".$evento["hora"]."\n";
+    $msg .= "🏅 ".$evento["deporte"]."\n";
+
+    if(!empty($evento["competicion"])){
+        $msg .= "🏆 ".$evento["competicion"]."\n";
+    }
+
+    $msg .= "📌 ".$evento["evento"]."\n";
+
+    if(!empty($evento["canal"])){
+        $msg .= "📺 ".$evento["canal"]."\n";
+    }
+
+    $msg .= "━━━━━━━━━━━━━━\n";
+
+    if(strlen($msg) > 3500){
+        break;
+    }
+}
 
 break;
 
