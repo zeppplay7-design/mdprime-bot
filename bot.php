@@ -253,7 +253,16 @@ case "/agenda":
     $msg .= "📡 Fuente: MARCA\n";
     $msg .= "📅 Eventos encontrados: ".$agenda["events_count"]."\n\n";
 
-    foreach($agenda["events"] as $evento){
+    $hoy = date("j");
+$eventos_hoy = [];
+
+foreach($agenda["events"] as $evento){
+    if(strpos($evento["fecha"], " ".$hoy." de ") !== false){
+        $eventos_hoy[] = $evento;
+    }
+}
+    
+    foreach($eventos_hoy as $evento){
 
     if(!empty($evento["fecha"])){
         $msg .= "📅 ".$evento["fecha"]."\n";
