@@ -112,21 +112,42 @@ if(strpos($command, "/reply ") === 0){
 ========================= */
 switch($command){
 
-    case "/start":
-        $msg = "🔥 BIENVENIDO A MDPRIME 🔥
+case "/start":
+
+    $msg = "🔥 BIENVENIDO A MDPRIME 🔥
 
 📺 BOT AUTOMATIZADO
 
-Selecciona una opción:
+━━━━━━━━━━━━━━━━━━
 
-/planes
-/referidos
-/apps
-/agenda
-/renovar
-/pagar
-/soporte";
-    break;
+📋 MENÚ PRINCIPAL
+
+💎 /planes
+Ver todos los planes disponibles.
+
+👥 /referidos
+Programa de referidos.
+
+📲 /apps
+Descargar aplicaciones.
+
+🏆 /agenda
+Agenda deportiva actualizada.
+
+🔄 /renovar
+Solicitar una renovación.
+
+💳 /pagar
+Realizar un pago.
+
+🛠 /soporte
+Contactar con soporte.
+
+━━━━━━━━━━━━━━━━━━
+
+⭐ Gracias por confiar en MDPRIME.";
+
+break;
 
     case "/planes":
         $msg = "💎 PLANES PREMIUM
