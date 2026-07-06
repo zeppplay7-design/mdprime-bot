@@ -260,7 +260,7 @@ case "/agenda":
     }
 
     $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n";
-    $msg .= "📡 Fuente: MARCA\n";
+    $msg .= "📡 Fuente: zeppplay\n";
     $msg .= "📅 ".$primerDia."\n";
     $msg .= "🎯 Eventos: ".count($eventos)."\n\n";
 
