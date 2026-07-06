@@ -261,6 +261,11 @@ foreach($agenda["events"] as $evento){
         $eventos_hoy[] = $evento;
     }
 }
+
+    if(empty($eventos_hoy)){
+    $msg = "⚠️ No hay eventos disponibles para hoy.";
+    break;
+}
     
     foreach($eventos_hoy as $evento){
 
