@@ -235,17 +235,7 @@ case "/soporte":
 
 case "/agenda":
 
-$json = @file_get_contents("https://quiet-waterfall-830d.zeppplay7.workers.dev/");
-
-if($json === false){
-
-    $msg = "❌ No se pudo conectar con el Worker.";
-
-}else{
-
-    $msg = substr(strip_tags($json), 0, 3500);
-
-}
+    $msg = "PASO 1";
 
 break;
 
