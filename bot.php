@@ -235,7 +235,45 @@ case "/soporte":
 
 case "/agenda":
 
-    $msg = "PASO 1";
+    $json = @file_get_contents("https://agenda-mdprime.zeppplay7.workers.dev/json");
+
+    if(!$json){
+        $msg = "❌ No se pudo cargar la agenda deportiva.";
+        break;
+    }
+
+    $agenda = json_decode($json, true);
+
+    if(empty($agenda["events"])){
+        $msg = "⚠️ No hay eventos disponibles.";
+        break;
+    }
+
+    $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n";
+    $msg .= "📡 Fuente: MARCA\n";
+    $msg .= "📅 Eventos encontrados: ".$agenda["events_count"]."\n\n";
+
+    foreach($agenda["events"] as $evento){
+
+        $msg .= "🕒 ".$evento["hora"]."\n";
+        $msg .= "🏅 ".$evento["deporte"]."\n";
+
+        if(!empty($evento["competicion"])){
+            $msg .= "🏆 ".$evento["competicion"]."\n";
+        }
+
+        $msg .= "📌 ".$evento["evento"]."\n";
+
+        if(!empty($evento["canal"])){
+            $msg .= "📺 ".$evento["canal"]."\n";
+        }
+
+        $msg .= "━━━━━━━━━━━━━━\n";
+
+        if(strlen($msg) > 3500){
+            break;
+        }
+    }
 
 break;
 
