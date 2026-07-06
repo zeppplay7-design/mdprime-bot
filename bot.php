@@ -385,7 +385,28 @@ $url = "https://api.telegram.org/bot".$token."/sendMessage";
 
 $data = [
     "chat_id" => $chat_id,
-    "text" => $msg
+    "text" => $msg,
+    "reply_markup" => json_encode([
+        "keyboard" => [
+            [
+                ["text" => "/planes"],
+                ["text" => "/referidos"]
+            ],
+            [
+                ["text" => "/apps"],
+                ["text" => "/agenda"]
+            ],
+            [
+                ["text" => "/renovar"],
+                ["text" => "/pagar"]
+            ],
+            [
+                ["text" => "/soporte"]
+            ]
+        ],
+        "resize_keyboard" => true,
+        "one_time_keyboard" => false
+    ])
 ];
 
 $options = [
