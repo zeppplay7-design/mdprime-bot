@@ -250,9 +250,9 @@ case "/agenda":
     }
 
     $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n";
-    $msg .= "📡 Fuente: MARCA\n";
+    $msg .= "📡 Fuente: zeppplay\n";
     $msg .= "📅 Eventos encontrados: ".$agenda["events_count"]."\n\n";
-
+date_default_timezone_set("Europe/Madrid");
     $hoy = date("j");
 $eventos_hoy = [];
 
