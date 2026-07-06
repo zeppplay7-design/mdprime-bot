@@ -168,7 +168,7 @@ break;
 12 Meses → 165€";
     break;
 
-case "/referidos?":
+case "/queesreferidos":
 
     $msg = "👥 ¿QUÉ ES REFERIDOS?
 
