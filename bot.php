@@ -249,49 +249,42 @@ case "/agenda":
         break;
     }
 
+    // Obtener el primer día disponible
+    $primerDia = $agenda["events"][0]["fecha"];
+    $eventos = [];
+
+    foreach($agenda["events"] as $evento){
+        if($evento["fecha"] == $primerDia){
+            $eventos[] = $evento;
+        }
+    }
+
     $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n";
-    $msg .= "📡 Fuente: zeppplay\n";
-    $msg .= "📅 Eventos encontrados: ".$agenda["events_count"]."\n\n";
-date_default_timezone_set("Europe/Madrid");
-    $hoy = date("j");
-$eventos_hoy = [];
+    $msg .= "📡 Fuente: MARCA\n";
+    $msg .= "📅 ".$primerDia."\n";
+    $msg .= "🎯 Eventos: ".count($eventos)."\n\n";
 
-foreach($agenda["events"] as $evento){
-    if(strpos($evento["fecha"], " ".$hoy." de ") !== false){
-        $eventos_hoy[] = $evento;
+    foreach($eventos as $evento){
+
+        $msg .= "🕒 ".$evento["hora"]."\n";
+        $msg .= "🏅 ".$evento["deporte"]."\n";
+
+        if(!empty($evento["competicion"])){
+            $msg .= "🏆 ".$evento["competicion"]."\n";
+        }
+
+        $msg .= "📌 ".$evento["evento"]."\n";
+
+        if(!empty($evento["canal"])){
+            $msg .= "📺 ".$evento["canal"]."\n";
+        }
+
+        $msg .= "━━━━━━━━━━━━━━\n";
+
+        if(strlen($msg) > 3500){
+            break;
+        }
     }
-}
-
-    if(empty($eventos_hoy)){
-    $msg = "⚠️ No hay eventos disponibles para hoy.";
-    break;
-}
-    
-    foreach($eventos_hoy as $evento){
-
-    if(!empty($evento["fecha"])){
-        $msg .= "📅 ".$evento["fecha"]."\n";
-    }
-
-    $msg .= "🕒 ".$evento["hora"]."\n";
-    $msg .= "🏅 ".$evento["deporte"]."\n";
-
-    if(!empty($evento["competicion"])){
-        $msg .= "🏆 ".$evento["competicion"]."\n";
-    }
-
-    $msg .= "📌 ".$evento["evento"]."\n";
-
-    if(!empty($evento["canal"])){
-        $msg .= "📺 ".$evento["canal"]."\n";
-    }
-
-    $msg .= "━━━━━━━━━━━━━━\n";
-
-    if(strlen($msg) > 3500){
-        break;
-    }
-}
 
 break;
 
