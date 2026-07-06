@@ -245,7 +245,14 @@ if($json === false){
 
 break;
 
-    
+
+case "/test":
+
+    $msg = ini_get("allow_url_fopen");
+
+break;
+
+
 default:
 
         /* MODO RENOVAR */
