@@ -126,7 +126,10 @@ case "/start":
 Ver todos los planes disponibles.
 
 👥 /referidos
-Programa de referidos.
+Consultar tarifas del programa de referidos.
+
+❓ /queesreferidos
+¿Qué es el programa de referidos?
 
 📲 /apps
 Descargar aplicaciones.
@@ -148,7 +151,6 @@ Contactar con soporte.
 ⭐ Gracias por confiar en MDPRIME.";
 
 break;
-
     case "/planes":
         $msg = "💎 PLANES PREMIUM
 
