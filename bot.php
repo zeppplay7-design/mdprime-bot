@@ -1136,13 +1136,30 @@ Introduce el nuevo usuario MDPRIME que quieres guardar.");
 
         break;
 
-    case "/renovar":
+case "/renovar":
 
-        setUserMode($state_file, $states, $chat_id, "renovar");
+    setUserMode($state_file, $states, $chat_id, "renovar");
 
-        sendMessage($chat_id, "🔄 Envíame tu usuario MDPRIME para revisar tu renovación.");
-        break;
+    $nombre = trim(($update["message"]["from"]["first_name"] ?? "") . " " . ($update["message"]["from"]["last_name"] ?? ""));
+    $usernameTelegram = $update["message"]["from"]["username"] ?? "";
 
+    $texto = "🔄 SOLICITUD DE RENOVACIÓN\n\n";
+    $texto .= "Para continuar, envíame tu usuario de MDPRIME.\n\n";
+    $texto .= "Ejemplo:\n";
+    $texto .= "Pepito44\n\n";
+    $texto .= "━━━━━━━━━━━━━━━━━━━━━━\n";
+    $texto .= "👤 Nombre Telegram: ".$nombre."\n";
+
+    if ($usernameTelegram != "") {
+        $texto .= "📱 Usuario Telegram: @".$usernameTelegram."\n";
+    } else {
+        $texto .= "📱 Usuario Telegram: (No disponible)\n";
+    }
+
+    sendMessage($chat_id, $texto);
+
+    break;
+   
     case "/pagar":
 
         $msg = "💳 PAGO SEGURO MDPRIME:
