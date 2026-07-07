@@ -1249,7 +1249,7 @@ Elige la app que más te guste.
 La V9 es la más nueva.
 
 🔥 V9 → 6713896
-📺 OTT → 7669716
+📺 OTT → 4269494
 ⚡ V8 → 6541023";
 
         sendMessage($chat_id, $msg);
