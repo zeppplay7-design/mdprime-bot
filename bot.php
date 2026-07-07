@@ -1203,7 +1203,7 @@ Recomienda MDPRIME a tus amigos y gana recompensas por cada nuevo cliente que co
 
 ━━━━━━━━━━━━━━━━━━
 
-✅ Recomiendas MDPRIME
+✅ Recomiendas MDPRIME P2P
 ✅ Tu amigo contrata
 ✅ Ganas mejores beneficios";
 
@@ -1266,12 +1266,11 @@ La V9 es la más nueva.
         } else {
             setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", $command);
 
-            sendMessage($chat_id, "👤 Introduce tu usuario MDPRIME.
+            sendMessage($chat_id, "👤 Introduce tu usuario de p2p.
 
 Puede ser:
 
 • Tu nombre de referente
-• Tu usuario de Telegram registrado
 • El nombre del referido
 
 Ejemplo:
@@ -1286,7 +1285,7 @@ Canelobel");
 
         sendMessage($chat_id, "🔄 CAMBIAR USUARIO
 
-Introduce el nuevo usuario MDPRIME que quieres guardar.");
+Introduce el nuevo usuario p2p que quieres guardar.");
 
         break;
 
@@ -1298,7 +1297,7 @@ case "/renovar":
     $usernameTelegram = $update["message"]["from"]["username"] ?? "";
 
     $texto = "🔄 SOLICITUD DE RENOVACIÓN\n\n";
-    $texto .= "Para continuar, envíame tu usuario de MDPRIME.\n\n";
+    $texto .= "Para continuar, envíame tu usuario de P2P.\n\n";
     $texto .= "Ejemplo:\n";
     $texto .= "Pepito44\n\n";
     $texto .= "━━━━━━━━━━━━━━━━━━━━━━\n";
