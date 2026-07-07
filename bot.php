@@ -1,16 +1,27 @@
 <?php
 
 /* =========================
-   RUTA TEMPORAL IMPORTADOR
-   Permite abrir /importar_railway.php aunque bot.php sea router en Render
+   RUTAS TEMPORALES WEB
+   Permite abrir scripts auxiliares aunque bot.php sea router en Render
 ========================= */
-if (isset($_SERVER["REQUEST_URI"]) && strpos($_SERVER["REQUEST_URI"], "importar_railway.php") !== false) {
-    if (file_exists(__DIR__ . "/importar_railway.php")) {
-        require __DIR__ . "/importar_railway.php";
-        exit;
+if (isset($_SERVER["REQUEST_URI"])) {
+    if (strpos($_SERVER["REQUEST_URI"], "importar_railway.php") !== false) {
+        if (file_exists(__DIR__ . "/importar_railway.php")) {
+            require __DIR__ . "/importar_railway.php";
+            exit;
+        }
+        header("Content-Type: text/plain; charset=utf-8");
+        exit("❌ No encuentro importar_railway.php en Render.");
     }
-    header("Content-Type: text/plain; charset=utf-8");
-    exit("❌ No encuentro importar_railway.php en Render.");
+
+    if (strpos($_SERVER["REQUEST_URI"], "fix_fechas_railway.php") !== false) {
+        if (file_exists(__DIR__ . "/fix_fechas_railway.php")) {
+            require __DIR__ . "/fix_fechas_railway.php";
+            exit;
+        }
+        header("Content-Type: text/plain; charset=utf-8");
+        exit("❌ No encuentro fix_fechas_railway.php en Render.");
+    }
 }
 
 
@@ -31,7 +42,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RAILWAY-DATEFIX-20260707-05";
+$bot_version = "MDPRIME-BOT-RAILWAY-FINAL-20260707-06";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -269,10 +280,10 @@ function consultarClienteApi($usuario) {
                 WHERE cliente_id = ?
                 ORDER BY 
                     CASE 
-                        WHEN estado='Activo' AND (NULLIF(fecha_caducidad, '0000-00-00') IS NULL OR NULLIF(fecha_caducidad, '0000-00-00') >= CURDATE()) 
+                        WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE()) 
                         THEN 0 ELSE 1 
                     END,
-                    NULLIF(fecha_caducidad, '0000-00-00') ASC,
+                    fecha_caducidad ASC,
                     nombre ASC
             ");
             $stmt->execute([$cliente_id]);
@@ -389,10 +400,10 @@ function consultarClienteApi($usuario) {
                OR LOWER(TRIM(r.nombre)) LIKE LOWER(TRIM(?))
             ORDER BY 
                 CASE 
-                    WHEN r.estado='Activo' AND (NULLIF(r.fecha_caducidad, '0000-00-00') IS NULL OR NULLIF(r.fecha_caducidad, '0000-00-00') >= CURDATE())
+                    WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
                     THEN 0 ELSE 1
                 END,
-                NULLIF(r.fecha_caducidad, '0000-00-00') DESC,
+                r.fecha_caducidad DESC,
                 r.id DESC
             LIMIT 1
         ");
