@@ -2,9 +2,58 @@
 
 /* =========================
    RUTAS TEMPORALES WEB
-   Permite abrir scripts auxiliares aunque bot.php sea router en Render
 ========================= */
 if (isset($_SERVER["REQUEST_URI"])) {
+
+    if (strpos($_SERVER["REQUEST_URI"], "fix_fechas_railway.php") !== false) {
+        header("Content-Type: text/plain; charset=utf-8");
+
+        if (($_GET["key"] ?? "") !== "MDPRIME_FIX_DATES_2026") {
+            http_response_code(403);
+            exit("❌ Acceso no autorizado.");
+        }
+
+        $db_host_tmp = "reseau.proxy.rlwy.net";
+        $db_port_tmp = 39553;
+        $db_name_tmp = "railway";
+        $db_user_tmp = "root";
+        $db_pass_tmp = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
+
+        try {
+            $pdo = new PDO(
+                "mysql:host=$db_host_tmp;port=$db_port_tmp;dbname=$db_name_tmp;charset=utf8mb4",
+                $db_user_tmp,
+                $db_pass_tmp,
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                ]
+            );
+
+            echo "🚀 MDPRIME FIX FECHAS INTEGRADO\n";
+            echo "━━━━━━━━━━━━━━━━━━━━━━\n";
+            echo "✅ Conectado a Railway.\n\n";
+
+            $pdo->exec("UPDATE referidos SET fecha_alta = NULL WHERE fecha_alta IS NOT NULL AND YEAR(fecha_alta) = 0");
+            $pdo->exec("UPDATE referidos SET fecha_caducidad = NULL WHERE fecha_caducidad IS NOT NULL AND YEAR(fecha_caducidad) = 0");
+
+            $total = $pdo->query("SELECT COUNT(*) FROM referidos")->fetchColumn();
+            $cadNulas = $pdo->query("SELECT COUNT(*) FROM referidos WHERE fecha_caducidad IS NULL")->fetchColumn();
+
+            echo "✅ Fechas inválidas corregidas.\n";
+            echo "Referidos: ".$total."\n";
+            echo "Caducidades sin fecha: ".$cadNulas."\n\n";
+            echo "🎉 FIX TERMINADO.\n";
+            echo "Ahora prueba /debugmd Brandon10 en Telegram.\n";
+            exit;
+
+        } catch (Throwable $e) {
+            echo "❌ ERROR FIX\n";
+            echo $e->getMessage()."\n";
+            exit;
+        }
+    }
+
     if (strpos($_SERVER["REQUEST_URI"], "importar_railway.php") !== false) {
         if (file_exists(__DIR__ . "/importar_railway.php")) {
             require __DIR__ . "/importar_railway.php";
@@ -13,17 +62,7 @@ if (isset($_SERVER["REQUEST_URI"])) {
         header("Content-Type: text/plain; charset=utf-8");
         exit("❌ No encuentro importar_railway.php en Render.");
     }
-
-    if (strpos($_SERVER["REQUEST_URI"], "fix_fechas_railway.php") !== false) {
-        if (file_exists(__DIR__ . "/fix_fechas_railway.php")) {
-            require __DIR__ . "/fix_fechas_railway.php";
-            exit;
-        }
-        header("Content-Type: text/plain; charset=utf-8");
-        exit("❌ No encuentro fix_fechas_railway.php en Render.");
-    }
 }
-
 
 /* =========================
    MDPRIME TELEGRAM BOT
@@ -42,7 +81,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RAILWAY-FINAL-20260707-06";
+$bot_version = "MDPRIME-BOT-RAILWAY-STABLE-20260707-07";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -299,11 +338,11 @@ function consultarClienteApi($usuario) {
                 $caducidad = $ref["fecha_caducidad"] ?? null;
                 $estado_real = "Inactivo";
 
-                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
+                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad  || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
                     $estado_real = "Activo";
                     $activos++;
 
-                    if ($caducidad && $caducidad !== "0000-00-00" && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
+                    if ($caducidad  && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
                         $proxima_caducidad = $caducidad;
                     }
                 } else {
@@ -311,7 +350,7 @@ function consultarClienteApi($usuario) {
                 }
 
                 $dias = null;
-                if ($caducidad && $caducidad !== "0000-00-00") {
+                if ($caducidad ) {
                     $hoy = new DateTime(date("Y-m-d"));
                     $cad = new DateTime($caducidad);
                     $dias = (int)$hoy->diff($cad)->format("%r%a");
@@ -321,8 +360,8 @@ function consultarClienteApi($usuario) {
                     "id" => (int)$ref["id"],
                     "nombre" => $ref["nombre"],
                     "estado" => $estado_real,
-                    "fecha_alta" => (!empty($ref["fecha_alta"]) && $ref["fecha_alta"] !== "0000-00-00") ? date("d/m/Y", strtotime($ref["fecha_alta"])) : "Sin fecha",
-                    "caducidad" => ($caducidad && $caducidad !== "0000-00-00") ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
+                    "fecha_alta" => (!empty($ref["fecha_alta"]) ) ? date("d/m/Y", strtotime($ref["fecha_alta"])) : "Sin fecha",
+                    "caducidad" => ($caducidad ) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
                     "dias" => $dias,
                     "nota" => $ref["nota"] ?? ""
                 ];
@@ -415,12 +454,12 @@ function consultarClienteApi($usuario) {
             $caducidad = $referido["fecha_caducidad"] ?? null;
             $estado_real = "Inactivo";
 
-            if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
+            if (($referido["estado"] ?? "") === "Activo" && (!$caducidad  || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
                 $estado_real = "Activo";
             }
 
             $dias = null;
-            if ($caducidad && $caducidad !== "0000-00-00") {
+            if ($caducidad ) {
                 $hoy = new DateTime(date("Y-m-d"));
                 $cad = new DateTime($caducidad);
                 $dias = (int)$hoy->diff($cad)->format("%r%a");
@@ -433,8 +472,8 @@ function consultarClienteApi($usuario) {
                     "id" => (int)$referido["id"],
                     "nombre" => $referido["nombre"],
                     "estado" => $estado_real,
-                    "fecha_alta" => (!empty($referido["fecha_alta"]) && $referido["fecha_alta"] !== "0000-00-00") ? date("d/m/Y", strtotime($referido["fecha_alta"])) : "Sin fecha",
-                    "caducidad" => ($caducidad && $caducidad !== "0000-00-00") ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
+                    "fecha_alta" => (!empty($referido["fecha_alta"]) ) ? date("d/m/Y", strtotime($referido["fecha_alta"])) : "Sin fecha",
+                    "caducidad" => ($caducidad ) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
                     "dias" => $dias,
                     "nota" => $referido["nota"] ?? ""
                 ],
