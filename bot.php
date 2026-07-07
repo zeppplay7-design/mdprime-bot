@@ -81,7 +81,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RENOVAR-PREMIUM-20260707-09";
+$bot_version = "MDPRIME-BOT-ESTADOS-FIX-20260707-10";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -829,6 +829,13 @@ $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
 $saved_usuario = getSavedUsuario($states, $chat_id);
+
+// Si el usuario escribe otro comando mientras el bot esperaba un dato,
+// cancelamos el estado anterior para que el comando funcione normal.
+if ($user_state !== "" && substr($text, 0, 1) === "/" && $command !== "/reply") {
+    clearUserMode($state_file, $states, $chat_id);
+    $user_state = "";
+}
 
 /* =========================
    RESPONDER A CLIENTE ADMIN
