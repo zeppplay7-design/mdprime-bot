@@ -1,6 +1,20 @@
 <?php
 
 /* =========================
+   RUTA TEMPORAL IMPORTADOR
+   Permite abrir /importar_railway.php aunque bot.php sea router en Render
+========================= */
+if (isset($_SERVER["REQUEST_URI"]) && strpos($_SERVER["REQUEST_URI"], "importar_railway.php") !== false) {
+    if (file_exists(__DIR__ . "/importar_railway.php")) {
+        require __DIR__ . "/importar_railway.php";
+        exit;
+    }
+    header("Content-Type: text/plain; charset=utf-8");
+    exit("❌ No encuentro importar_railway.php en Render.");
+}
+
+
+/* =========================
    MDPRIME TELEGRAM BOT
    Versión con Mi Cuenta + API InfinityFree
 ========================= */
@@ -12,11 +26,12 @@ $state_file = "states.json";
 $api_cliente_url = "https://zeppplay-guia-mdprime.page.gd/api/cliente.php";
 $api_key = "MDPRIME_API_2026";
 
-$db_host = "sql101.infinityfree.com";
-$db_name = "if0_42072872_referidos";
-$db_user = "if0_42072872";
-$db_pass = "DZe92Az3TX";
-$bot_version = "MDPRIME-BOT-MYSQL-DIRECT-20260707-03";
+$db_host = "reseau.proxy.rlwy.net";
+$db_port = 39553;
+$db_name = "railway";
+$db_user = "root";
+$db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
+$bot_version = "MDPRIME-BOT-RAILWAY-ROUTER-20260707-04";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -205,7 +220,7 @@ function saveUsuarioMdprime($file, &$states, $chat_id, $usuario) {
 ========================= */
 
 function consultarClienteApi($usuario) {
-    global $db_host, $db_name, $db_user, $db_pass;
+    global $db_host, $db_port, $db_name, $db_user, $db_pass;
 
     $usuario = trim((string)$usuario);
     $usuario = str_replace(["\r", "\n", "\t"], " ", $usuario);
@@ -220,7 +235,7 @@ function consultarClienteApi($usuario) {
 
     try {
         $pdo = new PDO(
-            "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4",
+            "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4",
             $db_user,
             $db_pass,
             [
