@@ -72,6 +72,7 @@ if (isset($_SERVER["REQUEST_URI"])) {
 $token = "8445421276:AAEgTw6jjvEI98YgnN9wZsAzE6MM8ajj_AQ";
 $admin_id = "372918983";
 $state_file = "states.json";
+$agenda_cache_file = __DIR__ . "/agenda_cache.json";
 
 $api_cliente_url = "https://zeppplay-guia-mdprime.page.gd/api/cliente.php";
 $api_key = "MDPRIME_API_2026";
@@ -81,7 +82,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-ESTADOS-FIX-20260707-10";
+$bot_version = "MDPRIME-BOT-OPTIMIZADO-20260707-11";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -269,6 +270,85 @@ function saveUsuarioMdprime($file, &$states, $chat_id, $usuario) {
    API MDPRIME
 ========================= */
 
+
+function getRailwayPdo() {
+    static $pdo = null;
+    global $db_host, $db_port, $db_name, $db_user, $db_pass;
+
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    $pdo = new PDO(
+        "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4",
+        $db_user,
+        $db_pass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT => 8,
+            PDO::ATTR_PERSISTENT => false
+        ]
+    );
+
+    return $pdo;
+}
+
+function optimizarIndicesRailway() {
+    try {
+        $pdo = getRailwayPdo();
+
+        $indices = [
+            "CREATE INDEX idx_clientes_nombre ON clientes(nombre)",
+            "CREATE INDEX idx_clientes_telegram ON clientes(telegram)",
+            "CREATE INDEX idx_clientes_contacto ON clientes(contacto)",
+            "CREATE INDEX idx_referidos_nombre ON referidos(nombre)",
+            "CREATE INDEX idx_referidos_cliente_id ON referidos(cliente_id)",
+            "CREATE INDEX idx_referidos_estado_caducidad ON referidos(estado, fecha_caducidad)"
+        ];
+
+        foreach ($indices as $sql) {
+            try {
+                $pdo->exec($sql);
+            } catch (Throwable $e) {
+                // Ignorar si ya existe
+            }
+        }
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function getAgendaJsonCache() {
+    global $agenda_cache_file;
+
+    $ttl = 300; // 5 minutos
+    $url = "https://agenda-mdprime.zeppplay7.workers.dev/json";
+
+    if (file_exists($agenda_cache_file) && (time() - filemtime($agenda_cache_file)) < $ttl) {
+        $cached = file_get_contents($agenda_cache_file);
+        if ($cached) {
+            return $cached;
+        }
+    }
+
+    $json = @file_get_contents($url);
+
+    if ($json) {
+        @file_put_contents($agenda_cache_file, $json);
+        return $json;
+    }
+
+    if (file_exists($agenda_cache_file)) {
+        return file_get_contents($agenda_cache_file);
+    }
+
+    return false;
+}
+
+
 function consultarClienteApi($usuario) {
     global $db_host, $db_port, $db_name, $db_user, $db_pass;
 
@@ -284,31 +364,39 @@ function consultarClienteApi($usuario) {
     $usuario_like = "%".$usuario."%";
 
     try {
-        $pdo = new PDO(
-            "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4",
-            $db_user,
-            $db_pass,
-            [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]
-        );
+        $pdo = getRailwayPdo();
 
+        // Primero búsqueda exacta rápida usando índices
         $stmt = $pdo->prepare("
             SELECT *
             FROM clientes
-            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-               OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
-               OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
-               OR LOWER(TRIM(contacto)) = LOWER(TRIM(?))
-               OR LOWER(TRIM(telefono)) = LOWER(TRIM(?))
-               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-               OR REPLACE(LOWER(TRIM(telegram)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            WHERE nombre = ?
+               OR telegram = ?
+               OR telegram = ?
+               OR contacto = ?
+               OR telefono = ?
             LIMIT 1
         ");
-
-        $stmt->execute([$usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario, $usuario, $usuario_sin_arroba]);
+        $stmt->execute([$usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario]);
         $cliente = $stmt->fetch();
+
+        // Si no hay coincidencia exacta, usar búsqueda flexible
+        if (!$cliente) {
+            $stmt = $pdo->prepare("
+                SELECT *
+                FROM clientes
+                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+                   OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
+                   OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
+                   OR LOWER(TRIM(contacto)) = LOWER(TRIM(?))
+                   OR LOWER(TRIM(telefono)) = LOWER(TRIM(?))
+                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+                   OR REPLACE(LOWER(TRIM(telegram)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+                LIMIT 1
+            ");
+            $stmt->execute([$usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario, $usuario, $usuario_sin_arroba]);
+            $cliente = $stmt->fetch();
+        }
 
         if ($cliente) {
             $cliente_id = (int)$cliente["id"];
@@ -425,6 +513,7 @@ function consultarClienteApi($usuario) {
             ];
         }
 
+        // Búsqueda exacta rápida de referido
         $stmt = $pdo->prepare("
             SELECT 
                 r.*,
@@ -434,9 +523,7 @@ function consultarClienteApi($usuario) {
                 c.contacto AS referente_contacto
             FROM referidos r
             INNER JOIN clientes c ON c.id = r.cliente_id
-            WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
-               OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-               OR LOWER(TRIM(r.nombre)) LIKE LOWER(TRIM(?))
+            WHERE r.nombre = ?
             ORDER BY 
                 CASE 
                     WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
@@ -446,9 +533,35 @@ function consultarClienteApi($usuario) {
                 r.id DESC
             LIMIT 1
         ");
-
-        $stmt->execute([$usuario, $usuario, $usuario_like]);
+        $stmt->execute([$usuario]);
         $referido = $stmt->fetch();
+
+        // Si no hay coincidencia exacta, usar búsqueda flexible
+        if (!$referido) {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    r.*,
+                    c.id AS referente_id,
+                    c.nombre AS referente_nombre,
+                    c.telegram AS referente_telegram,
+                    c.contacto AS referente_contacto
+                FROM referidos r
+                INNER JOIN clientes c ON c.id = r.cliente_id
+                WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
+                   OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+                   OR LOWER(TRIM(r.nombre)) LIKE LOWER(TRIM(?))
+                ORDER BY 
+                    CASE 
+                        WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
+                        THEN 0 ELSE 1
+                    END,
+                    r.fecha_caducidad DESC,
+                    r.id DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$usuario, $usuario, $usuario_like]);
+            $referido = $stmt->fetch();
+        }
 
         if ($referido) {
             $caducidad = $referido["fecha_caducidad"] ?? null;
@@ -752,14 +865,7 @@ No tienes referidos registrados.";
 }
 
 function procesarCuenta($chat_id, $usuario, $tipo = "/micuenta") {
-    $espera = sendMessage($chat_id, "⏳ Consultando datos MDPRIME...", false);
-    $espera_id = $espera["result"]["message_id"] ?? null;
-
     $data = consultarClienteApi($usuario);
-
-    if ($espera_id) {
-        deleteMessage($chat_id, $espera_id);
-    }
 
     if (empty($data["ok"])) {
         $detalle_error = $data["error"] ?? "Sin detalle";
@@ -882,14 +988,7 @@ if ($user_state === "esperando_usuario_mdprime") {
     $usuario = trim($text);
     $pending = is_array($states[$chat_id] ?? null) ? ($states[$chat_id]["pending_command"] ?? "/micuenta") : "/micuenta";
 
-    $espera = sendMessage($chat_id, "⏳ Comprobando usuario MDPRIME...", false);
-    $espera_id = $espera["result"]["message_id"] ?? null;
-
     $data = consultarClienteApi($usuario);
-
-    if ($espera_id) {
-        deleteMessage($chat_id, $espera_id);
-    }
 
     if (empty($data["ok"])) {
         sendMessage($chat_id, "❌ No he encontrado ese usuario.
@@ -1238,7 +1337,7 @@ Después envía el comprobante.";
         $espera = sendMessage($chat_id, "⏳ Cargando agenda deportiva...", false);
         $espera_id = $espera["result"]["message_id"] ?? null;
 
-        $json = @file_get_contents("https://agenda-mdprime.zeppplay7.workers.dev/json");
+        $json = getAgendaJsonCache();
 
         if ($espera_id) {
             deleteMessage($chat_id, $espera_id);
@@ -1293,6 +1392,18 @@ Después envía el comprobante.";
         }
 
         sendLongMessage($chat_id, $msg);
+        break;
+
+    case "/optimizarmd":
+
+        if ((string)$chat_id !== (string)$admin_id) {
+            sendMessage($chat_id, "❌ Comando reservado para administración.");
+            break;
+        }
+
+        $ok = optimizarIndicesRailway();
+
+        sendMessage($chat_id, $ok ? "✅ Índices de Railway optimizados correctamente." : "❌ No se pudieron optimizar los índices.");
         break;
 
     case "/debugmd":
