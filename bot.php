@@ -11,6 +11,7 @@ $state_file = "states.json";
 
 $api_cliente_url = "https://zeppplay-guia-mdprime.page.gd/api/cliente.php";
 $api_key = "MDPRIME_API_2026";
+$bot_version = "MDPRIME-BOT-API-FIX-20260707-01";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -494,15 +495,22 @@ function procesarCuenta($chat_id, $usuario, $tipo = "/micuenta") {
     }
 
     if (empty($data["ok"])) {
-        sendMessage($chat_id, "❌ No he encontrado ese usuario guardado.
+        $detalle_error = $data["error"] ?? "Sin detalle";
+        $buscado_api = $data["buscado"] ?? $usuario;
 
-Pulsa:
-/cambiarusuario
+        sendMessage($chat_id, "❌ No he encontrado ese usuario.
 
-O prueba directo así:
+Buscado:
+".$buscado_api."
+
+Detalle:
+".$detalle_error."
+
+Prueba directo así:
 /caducidad Brandon10
 
-Recuerda escribirlo exactamente como aparece en el panel.");
+O cambia el usuario con:
+/cambiarusuario");
         return;
     }
 
@@ -948,9 +956,36 @@ Después envía el comprobante.";
         sendLongMessage($chat_id, $msg);
         break;
 
+    case "/debugmd":
+
+        global $bot_version;
+
+        $debug_usuario = $command_arg !== "" ? $command_arg : "Brandon10";
+        $debug_data = consultarClienteApi($debug_usuario);
+
+        $debug_msg = "🧪 DEBUG MDPRIME\n\n";
+        $debug_msg .= "Versión bot:\n".$bot_version."\n\n";
+        $debug_msg .= "Usuario prueba:\n".$debug_usuario."\n\n";
+        $debug_msg .= "API ok:\n".(!empty($debug_data["ok"]) ? "SI" : "NO")."\n\n";
+        $debug_msg .= "Tipo:\n".($debug_data["tipo"] ?? "Sin tipo")."\n\n";
+        $debug_msg .= "Error:\n".($debug_data["error"] ?? "Sin error")."\n\n";
+
+        if (!empty($debug_data["referido"]["nombre"])) {
+            $debug_msg .= "Referido encontrado:\n".$debug_data["referido"]["nombre"]."\n";
+            $debug_msg .= "Caduca:\n".($debug_data["referido"]["caducidad"] ?? "Sin fecha")."\n";
+        }
+
+        if (!empty($debug_data["cliente"]["nombre"])) {
+            $debug_msg .= "Referente encontrado:\n".$debug_data["cliente"]["nombre"]."\n";
+        }
+
+        sendMessage($chat_id, $debug_msg);
+        break;
+
     case "/test":
 
-        sendMessage($chat_id, ini_get("allow_url_fopen"));
+        global $bot_version;
+        sendMessage($chat_id, "allow_url_fopen: ".ini_get("allow_url_fopen")."\nVersión: ".$bot_version);
         break;
 
     default:
