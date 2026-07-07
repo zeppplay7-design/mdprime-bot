@@ -11,7 +11,7 @@ $state_file = "states.json";
 
 $api_cliente_url = "https://zeppplay-guia-mdprime.page.gd/api/cliente.php";
 $api_key = "MDPRIME_API_2026";
-$bot_version = "MDPRIME-BOT-API-FIX-20260707-01";
+$bot_version = "MDPRIME-BOT-CURL-FIX-20260707-02";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -207,13 +207,54 @@ function consultarClienteApi($usuario) {
         "usuario" => $usuario
     ]);
 
-    $context = stream_context_create([
-        "http" => [
-            "timeout" => 15
-        ]
-    ]);
+    $json = false;
 
-    $json = @file_get_contents($url, false, $context);
+    /* INTENTO 1: cURL con User-Agent real */
+    if (function_exists("curl_init")) {
+        $ch = curl_init();
+
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_HTTPHEADER => [
+                "Accept: application/json,text/plain,*/*",
+                "User-Agent: Mozilla/5.0 MDPRIMEBOT/1.0"
+            ]
+        ]);
+
+        $json = curl_exec($ch);
+        $curl_error = curl_error($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        curl_close($ch);
+
+        if ($json === false || trim((string)$json) === "") {
+            return [
+                "ok" => false,
+                "error" => "No se pudo conectar con la API por cURL",
+                "detalle" => $curl_error,
+                "http_code" => $http_code
+            ];
+        }
+    }
+
+    /* INTENTO 2: file_get_contents con cabeceras */
+    if ($json === false) {
+        $context = stream_context_create([
+            "http" => [
+                "timeout" => 20,
+                "method" => "GET",
+                "header" => "Accept: application/json\r\nUser-Agent: Mozilla/5.0 MDPRIMEBOT/1.0\r\n"
+            ]
+        ]);
+
+        $json = @file_get_contents($url, false, $context);
+    }
 
     if (!$json) {
         return [
@@ -222,18 +263,19 @@ function consultarClienteApi($usuario) {
         ];
     }
 
-    $data = json_decode($json, true);
+    $json_limpio = trim($json);
+    $data = json_decode($json_limpio, true);
 
     if (!is_array($data)) {
         return [
             "ok" => false,
-            "error" => "Respuesta no válida del servidor"
+            "error" => "Respuesta no válida del servidor",
+            "raw_inicio" => mb_substr(strip_tags($json_limpio), 0, 220, "UTF-8")
         ];
     }
 
     return $data;
 }
-
 function fmtDias($dias) {
     if ($dias === null || $dias === "") {
         return "Sin calcular";
@@ -969,6 +1011,18 @@ Después envía el comprobante.";
         $debug_msg .= "API ok:\n".(!empty($debug_data["ok"]) ? "SI" : "NO")."\n\n";
         $debug_msg .= "Tipo:\n".($debug_data["tipo"] ?? "Sin tipo")."\n\n";
         $debug_msg .= "Error:\n".($debug_data["error"] ?? "Sin error")."\n\n";
+
+        if (!empty($debug_data["detalle"])) {
+            $debug_msg .= "Detalle:\n".$debug_data["detalle"]."\n\n";
+        }
+
+        if (!empty($debug_data["http_code"])) {
+            $debug_msg .= "HTTP:\n".$debug_data["http_code"]."\n\n";
+        }
+
+        if (!empty($debug_data["raw_inicio"])) {
+            $debug_msg .= "Respuesta inicio:\n".$debug_data["raw_inicio"]."\n\n";
+        }
 
         if (!empty($debug_data["referido"]["nombre"])) {
             $debug_msg .= "Referido encontrado:\n".$debug_data["referido"]["nombre"]."\n";
