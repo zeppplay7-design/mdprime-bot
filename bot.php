@@ -494,12 +494,15 @@ function procesarCuenta($chat_id, $usuario, $tipo = "/micuenta") {
     }
 
     if (empty($data["ok"])) {
-        sendMessage($chat_id, "❌ No he encontrado ese usuario.
+        sendMessage($chat_id, "❌ No he encontrado ese usuario guardado.
 
-Revisa que esté escrito exactamente igual que en el panel.
+Pulsa:
+/cambiarusuario
 
-Puedes cambiarlo con:
-/cambiarusuario");
+O prueba directo así:
+/caducidad Brandon10
+
+Recuerda escribirlo exactamente como aparece en el panel.");
         return;
     }
 
@@ -544,6 +547,9 @@ if ($text === "") {
 
 $command = strtolower(trim(explode(" ", $text)[0]));
 $command = explode("@", $command)[0];
+
+$parts_text = explode(" ", $text, 2);
+$command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
 
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
@@ -594,6 +600,30 @@ if ($user_state === "esperando_usuario_mdprime") {
     $usuario = trim($text);
     $pending = is_array($states[$chat_id] ?? null) ? ($states[$chat_id]["pending_command"] ?? "/micuenta") : "/micuenta";
 
+    $espera = sendMessage($chat_id, "⏳ Comprobando usuario MDPRIME...", false);
+    $espera_id = $espera["result"]["message_id"] ?? null;
+
+    $data = consultarClienteApi($usuario);
+
+    if ($espera_id) {
+        deleteMessage($chat_id, $espera_id);
+    }
+
+    if (empty($data["ok"])) {
+        sendMessage($chat_id, "❌ No he encontrado ese usuario.
+
+No lo he guardado.
+
+Prueba escribiéndolo exactamente como aparece en el panel.
+
+Ejemplos:
+Canelobel
+BELTROL
+Brandon10");
+        http_response_code(200);
+        exit;
+    }
+
     saveUsuarioMdprime($state_file, $states, $chat_id, $usuario);
 
     sendMessage($chat_id, "✅ Usuario guardado:
@@ -601,7 +631,13 @@ if ($user_state === "esperando_usuario_mdprime") {
 
 A partir de ahora podrás consultar tu cuenta directamente.");
 
-    procesarCuenta($chat_id, $usuario, $pending);
+    if ($pending === "/caducidad") {
+        sendLongMessage($chat_id, formatCaducidad($data));
+    } elseif ($pending === "/misreferidos") {
+        sendLongMessage($chat_id, formatMisReferidos($data));
+    } else {
+        sendLongMessage($chat_id, formatMiCuenta($data));
+    }
 
     http_response_code(200);
     exit;
@@ -794,7 +830,9 @@ La V9 es la más nueva.
     case "/caducidad":
     case "/misreferidos":
 
-        if ($saved_usuario !== "") {
+        if ($command_arg !== "") {
+            procesarCuenta($chat_id, $command_arg, $command);
+        } elseif ($saved_usuario !== "") {
             procesarCuenta($chat_id, $saved_usuario, $command);
         } else {
             setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", $command);
