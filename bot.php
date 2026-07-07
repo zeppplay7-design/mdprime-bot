@@ -920,17 +920,67 @@ A partir de ahora podrás consultar tu cuenta directamente.");
 
 if ($user_state === "renovar") {
 
-    $admin_msg = "🔄 NUEVA RENOVACIÓN
+   if ($user_state === "renovar") {
 
-Usuario: ".$text."
+    $usuario_mdprime = trim($text);
 
-Chat ID: ".$chat_id;
+    $nombre = trim(
+        ($update["message"]["from"]["first_name"] ?? "") . " " .
+        ($update["message"]["from"]["last_name"] ?? "")
+    );
+
+    $usernameTelegram = $update["message"]["from"]["username"] ?? "";
+
+    // Consultar datos del cliente
+    $datos = consultarClienteApi($usuario_mdprime);
+
+    $caduca = "No encontrada";
+    $dias = "No disponible";
+
+    if (!empty($datos["ok"]) && !empty($datos["referido"])) {
+        $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
+        $dias = fmtDias($datos["referido"]["dias"] ?? null);
+    }
+
+    $admin_msg = "🔄 NUEVA SOLICITUD DE RENOVACIÓN
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario MDPRIME:
+".$usuario_mdprime."
+
+👤 Nombre Telegram:
+".$nombre."
+
+📱 Usuario Telegram:
+".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+
+🆔 Chat ID:
+".$chat_id."
+
+📅 Caduca:
+".$caduca."
+
+⏳ Tiempo restante:
+".$dias."
+
+🕒 Fecha:
+".date("d/m/Y H:i")."
+
+━━━━━━━━━━━━━━━━━━
+
+💬 Responder:
+
+/reply ".$chat_id." Hola ".$usuario_mdprime.", hemos recibido tu solicitud de renovación.";
 
     sendMessage($admin_id, $admin_msg, false);
 
     clearUserMode($state_file, $states, $chat_id);
 
-    sendMessage($chat_id, "✅ Solicitud de renovación enviada. Te responderemos pronto.");
+    sendMessage(
+        $chat_id,
+        "✅ Hemos recibido tu solicitud de renovación.\n\nNuestro equipo contactará contigo lo antes posible."
+    );
 
     http_response_code(200);
     exit;
