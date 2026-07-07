@@ -31,7 +31,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RAILWAY-ROUTER-20260707-04";
+$bot_version = "MDPRIME-BOT-RAILWAY-DATEFIX-20260707-05";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -269,10 +269,10 @@ function consultarClienteApi($usuario) {
                 WHERE cliente_id = ?
                 ORDER BY 
                     CASE 
-                        WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad = '0000-00-00' OR fecha_caducidad >= CURDATE()) 
+                        WHEN estado='Activo' AND (NULLIF(fecha_caducidad, '0000-00-00') IS NULL OR NULLIF(fecha_caducidad, '0000-00-00') >= CURDATE()) 
                         THEN 0 ELSE 1 
                     END,
-                    fecha_caducidad ASC,
+                    NULLIF(fecha_caducidad, '0000-00-00') ASC,
                     nombre ASC
             ");
             $stmt->execute([$cliente_id]);
@@ -288,7 +288,7 @@ function consultarClienteApi($usuario) {
                 $caducidad = $ref["fecha_caducidad"] ?? null;
                 $estado_real = "Inactivo";
 
-                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || $caducidad >= date("Y-m-d"))) {
+                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
                     $estado_real = "Activo";
                     $activos++;
 
@@ -389,10 +389,10 @@ function consultarClienteApi($usuario) {
                OR LOWER(TRIM(r.nombre)) LIKE LOWER(TRIM(?))
             ORDER BY 
                 CASE 
-                    WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad = '0000-00-00' OR r.fecha_caducidad >= CURDATE())
+                    WHEN r.estado='Activo' AND (NULLIF(r.fecha_caducidad, '0000-00-00') IS NULL OR NULLIF(r.fecha_caducidad, '0000-00-00') >= CURDATE())
                     THEN 0 ELSE 1
                 END,
-                r.fecha_caducidad DESC,
+                NULLIF(r.fecha_caducidad, '0000-00-00') DESC,
                 r.id DESC
             LIMIT 1
         ");
@@ -404,7 +404,7 @@ function consultarClienteApi($usuario) {
             $caducidad = $referido["fecha_caducidad"] ?? null;
             $estado_real = "Inactivo";
 
-            if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || $caducidad >= date("Y-m-d"))) {
+            if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
                 $estado_real = "Activo";
             }
 
