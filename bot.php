@@ -81,7 +81,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RAILWAY-STABLE-20260707-07";
+$bot_version = "MDPRIME-BOT-RENOVAR-PREMIUM-20260707-09";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -919,8 +919,6 @@ A partir de ahora podrás consultar tu cuenta directamente.");
 }
 
 if ($user_state === "renovar") {
-
-   if ($user_state === "renovar") {
 
     $usuario_mdprime = trim($text);
 
