@@ -11,7 +11,12 @@ $state_file = "states.json";
 
 $api_cliente_url = "https://zeppplay-guia-mdprime.page.gd/api/cliente.php";
 $api_key = "MDPRIME_API_2026";
-$bot_version = "MDPRIME-BOT-CURL-FIX-20260707-02";
+
+$db_host = "sql101.infinityfree.com";
+$db_name = "if0_42072872_referidos";
+$db_user = "if0_42072872";
+$db_pass = "DZe92Az3TX";
+$bot_version = "MDPRIME-BOT-MYSQL-DIRECT-20260707-03";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -200,82 +205,237 @@ function saveUsuarioMdprime($file, &$states, $chat_id, $usuario) {
 ========================= */
 
 function consultarClienteApi($usuario) {
-    global $api_cliente_url, $api_key;
+    global $db_host, $db_name, $db_user, $db_pass;
 
-    $url = $api_cliente_url."?".http_build_query([
-        "key" => $api_key,
-        "usuario" => $usuario
-    ]);
+    $usuario = trim((string)$usuario);
+    $usuario = str_replace(["\r", "\n", "\t"], " ", $usuario);
+    $usuario = preg_replace('/\s+/', ' ', $usuario);
 
-    $json = false;
+    if ($usuario === "") {
+        return ["ok" => false, "error" => "Falta usuario"];
+    }
 
-    /* INTENTO 1: cURL con User-Agent real */
-    if (function_exists("curl_init")) {
-        $ch = curl_init();
+    $usuario_sin_arroba = ltrim($usuario, "@");
+    $usuario_like = "%".$usuario."%";
 
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
-            CURLOPT_HTTPHEADER => [
-                "Accept: application/json,text/plain,*/*",
-                "User-Agent: Mozilla/5.0 MDPRIMEBOT/1.0"
+    try {
+        $pdo = new PDO(
+            "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4",
+            $db_user,
+            $db_pass,
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
             ]
-        ]);
+        );
 
-        $json = curl_exec($ch);
-        $curl_error = curl_error($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM clientes
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
+               OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
+               OR LOWER(TRIM(contacto)) = LOWER(TRIM(?))
+               OR LOWER(TRIM(telefono)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+               OR REPLACE(LOWER(TRIM(telegram)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            LIMIT 1
+        ");
 
-        curl_close($ch);
+        $stmt->execute([$usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario, $usuario, $usuario_sin_arroba]);
+        $cliente = $stmt->fetch();
 
-        if ($json === false || trim((string)$json) === "") {
+        if ($cliente) {
+            $cliente_id = (int)$cliente["id"];
+
+            $stmt = $pdo->prepare("
+                SELECT *
+                FROM referidos
+                WHERE cliente_id = ?
+                ORDER BY 
+                    CASE 
+                        WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad = '0000-00-00' OR fecha_caducidad >= CURDATE()) 
+                        THEN 0 ELSE 1 
+                    END,
+                    fecha_caducidad ASC,
+                    nombre ASC
+            ");
+            $stmt->execute([$cliente_id]);
+            $referidos_db = $stmt->fetchAll();
+
+            $referidos_lista = [];
+            $total = count($referidos_db);
+            $activos = 0;
+            $inactivos = 0;
+            $proxima_caducidad = null;
+
+            foreach ($referidos_db as $ref) {
+                $caducidad = $ref["fecha_caducidad"] ?? null;
+                $estado_real = "Inactivo";
+
+                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || $caducidad >= date("Y-m-d"))) {
+                    $estado_real = "Activo";
+                    $activos++;
+
+                    if ($caducidad && $caducidad !== "0000-00-00" && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
+                        $proxima_caducidad = $caducidad;
+                    }
+                } else {
+                    $inactivos++;
+                }
+
+                $dias = null;
+                if ($caducidad && $caducidad !== "0000-00-00") {
+                    $hoy = new DateTime(date("Y-m-d"));
+                    $cad = new DateTime($caducidad);
+                    $dias = (int)$hoy->diff($cad)->format("%r%a");
+                }
+
+                $referidos_lista[] = [
+                    "id" => (int)$ref["id"],
+                    "nombre" => $ref["nombre"],
+                    "estado" => $estado_real,
+                    "fecha_alta" => (!empty($ref["fecha_alta"]) && $ref["fecha_alta"] !== "0000-00-00") ? date("d/m/Y", strtotime($ref["fecha_alta"])) : "Sin fecha",
+                    "caducidad" => ($caducidad && $caducidad !== "0000-00-00") ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
+                    "dias" => $dias,
+                    "nota" => $ref["nota"] ?? ""
+                ];
+            }
+
+            $niveles = $pdo->query("SELECT * FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
+
+            $nivel_actual = [
+                "nivel" => "SIN NIVEL",
+                "min_activos" => 0,
+                "trimestral" => 0,
+                "semestral" => 0,
+                "anual" => 0
+            ];
+
+            $siguiente = null;
+
+            foreach ($niveles as $nivel) {
+                if ($activos >= (int)$nivel["min_activos"]) {
+                    $nivel_actual = $nivel;
+                } elseif (!$siguiente) {
+                    $siguiente = $nivel;
+                }
+            }
+
+            $dias_proxima = null;
+            if ($proxima_caducidad) {
+                $hoy = new DateTime(date("Y-m-d"));
+                $cad = new DateTime($proxima_caducidad);
+                $dias_proxima = (int)$hoy->diff($cad)->format("%r%a");
+            }
+
             return [
-                "ok" => false,
-                "error" => "No se pudo conectar con la API por cURL",
-                "detalle" => $curl_error,
-                "http_code" => $http_code
+                "ok" => true,
+                "tipo" => "referente",
+                "cliente" => [
+                    "id" => $cliente_id,
+                    "nombre" => $cliente["nombre"],
+                    "contacto" => $cliente["contacto"] ?? "",
+                    "telegram" => $cliente["telegram"] ?? ""
+                ],
+                "resumen" => [
+                    "total_referidos" => $total,
+                    "activos" => $activos,
+                    "inactivos" => $inactivos,
+                    "proxima_caducidad" => $proxima_caducidad ? date("d/m/Y", strtotime($proxima_caducidad)) : "Sin fecha",
+                    "dias_proxima_caducidad" => $dias_proxima
+                ],
+                "nivel" => [
+                    "actual" => $nivel_actual["nivel"],
+                    "precio_3_meses" => (float)$nivel_actual["trimestral"],
+                    "precio_6_meses" => (float)$nivel_actual["semestral"],
+                    "precio_12_meses" => (float)$nivel_actual["anual"]
+                ],
+                "siguiente_nivel" => $siguiente ? [
+                    "nivel" => $siguiente["nivel"],
+                    "min_activos" => (int)$siguiente["min_activos"],
+                    "faltan" => max(0, (int)$siguiente["min_activos"] - $activos)
+                ] : null,
+                "referidos" => $referidos_lista
             ];
         }
-    }
 
-    /* INTENTO 2: file_get_contents con cabeceras */
-    if ($json === false) {
-        $context = stream_context_create([
-            "http" => [
-                "timeout" => 20,
-                "method" => "GET",
-                "header" => "Accept: application/json\r\nUser-Agent: Mozilla/5.0 MDPRIMEBOT/1.0\r\n"
-            ]
-        ]);
+        $stmt = $pdo->prepare("
+            SELECT 
+                r.*,
+                c.id AS referente_id,
+                c.nombre AS referente_nombre,
+                c.telegram AS referente_telegram,
+                c.contacto AS referente_contacto
+            FROM referidos r
+            INNER JOIN clientes c ON c.id = r.cliente_id
+            WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+               OR LOWER(TRIM(r.nombre)) LIKE LOWER(TRIM(?))
+            ORDER BY 
+                CASE 
+                    WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad = '0000-00-00' OR r.fecha_caducidad >= CURDATE())
+                    THEN 0 ELSE 1
+                END,
+                r.fecha_caducidad DESC,
+                r.id DESC
+            LIMIT 1
+        ");
 
-        $json = @file_get_contents($url, false, $context);
-    }
+        $stmt->execute([$usuario, $usuario, $usuario_like]);
+        $referido = $stmt->fetch();
 
-    if (!$json) {
+        if ($referido) {
+            $caducidad = $referido["fecha_caducidad"] ?? null;
+            $estado_real = "Inactivo";
+
+            if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || $caducidad === "0000-00-00" || $caducidad >= date("Y-m-d"))) {
+                $estado_real = "Activo";
+            }
+
+            $dias = null;
+            if ($caducidad && $caducidad !== "0000-00-00") {
+                $hoy = new DateTime(date("Y-m-d"));
+                $cad = new DateTime($caducidad);
+                $dias = (int)$hoy->diff($cad)->format("%r%a");
+            }
+
+            return [
+                "ok" => true,
+                "tipo" => "referido",
+                "referido" => [
+                    "id" => (int)$referido["id"],
+                    "nombre" => $referido["nombre"],
+                    "estado" => $estado_real,
+                    "fecha_alta" => (!empty($referido["fecha_alta"]) && $referido["fecha_alta"] !== "0000-00-00") ? date("d/m/Y", strtotime($referido["fecha_alta"])) : "Sin fecha",
+                    "caducidad" => ($caducidad && $caducidad !== "0000-00-00") ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
+                    "dias" => $dias,
+                    "nota" => $referido["nota"] ?? ""
+                ],
+                "referente" => [
+                    "id" => (int)$referido["referente_id"],
+                    "nombre" => $referido["referente_nombre"],
+                    "telegram" => $referido["referente_telegram"] ?? "",
+                    "contacto" => $referido["referente_contacto"] ?? ""
+                ]
+            ];
+        }
+
         return [
             "ok" => false,
-            "error" => "No se pudo conectar con el servidor MDPRIME"
+            "error" => "Cliente o referido no encontrado",
+            "buscado" => $usuario
         ];
-    }
 
-    $json_limpio = trim($json);
-    $data = json_decode($json_limpio, true);
-
-    if (!is_array($data)) {
+    } catch (Throwable $e) {
         return [
             "ok" => false,
-            "error" => "Respuesta no válida del servidor",
-            "raw_inicio" => mb_substr(strip_tags($json_limpio), 0, 220, "UTF-8")
+            "error" => "Error MySQL directo",
+            "detalle" => $e->getMessage()
         ];
     }
-
-    return $data;
 }
+
 function fmtDias($dias) {
     if ($dias === null || $dias === "") {
         return "Sin calcular";
