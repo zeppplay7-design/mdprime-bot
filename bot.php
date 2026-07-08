@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-CLIENTES-NORMALES-V35-20260709";
+$bot_version = "MDPRIME-BOT-NORMALES-FALLBACK-SEGURO-V36-20260709";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -809,7 +809,7 @@ function consultarClienteApi($usuario) {
             return construirRespuestaReferido($referido_directo);
         }
 
-        // V35: Buscar también en clientes normales.
+        // V36: buscar también en clientes normales antes de decir no encontrado.
         try {
             $stmt = $pdo->prepare("
                 SELECT *
@@ -820,23 +820,17 @@ function consultarClienteApi($usuario) {
                    OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
                    OR LOWER(TRIM(contacto)) = LOWER(TRIM(?))
                    OR LOWER(TRIM(telefono)) = LOWER(TRIM(?))
-                ORDER BY 
-                    CASE 
-                        WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE())
-                        THEN 0 ELSE 1 
-                    END,
-                    fecha_caducidad DESC,
-                    id DESC
+                ORDER BY id DESC
                 LIMIT 1
             ");
             $stmt->execute([$usuario, $usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario]);
-            $cliente_normal = $stmt->fetch();
+            $normal = $stmt->fetch();
 
-            if ($cliente_normal) {
-                return construirRespuestaClienteNormal($cliente_normal);
+            if ($normal) {
+                return construirRespuestaClienteNormal($normal);
             }
         } catch (Throwable $e) {
-            // Si la tabla todavía no existe, no rompemos el bot.
+            // Si la tabla no existe todavía, el bot no se rompe.
         }
 
         return [
@@ -962,7 +956,6 @@ function formatMiCuenta($data) {
 
     if ($tipo === "normal" || isset($data["cliente_normal"])) {
         $normal = $data["cliente_normal"] ?? [];
-
         $estado = $normal["estado"] ?? "Sin estado";
         $caducidad = $normal["caducidad"] ?? "Sin fecha";
         $alta = $normal["fecha_alta"] ?? "Sin fecha";
@@ -1774,84 +1767,50 @@ function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
     try {
         $pdo = getRailwayPdo();
 
-        if ($es_normal) {
-            $buscar = $pdo->prepare("
-                SELECT id, nombre, fecha_caducidad
-                FROM clientes_normales
-                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                ORDER BY id DESC
-                LIMIT 1
-            ");
-            $buscar->execute([$usuario, $usuario]);
-            $row = $buscar->fetch();
-
-            if (!$row) {
-                return ["ok" => false, "error" => "No encuentro el cliente normal en Railway: ".$usuario];
-            }
-
-            $id = (int)$row["id"];
-
-            $pdo->prepare("UPDATE clientes_normales SET fecha_caducidad = NULL WHERE id = ? AND CAST(fecha_caducidad AS CHAR) = '0000-00-00'")->execute([$id]);
-
-            $sql = "
-                UPDATE clientes_normales
-                SET fecha_caducidad = DATE_ADD(
-                    CASE
-                        WHEN fecha_caducidad IS NOT NULL
-                         AND fecha_caducidad >= CURDATE()
-                        THEN fecha_caducidad
-                        ELSE CURDATE()
-                    END,
-                    INTERVAL ".$meses." MONTH
-                ),
-                estado = 'Activo'
-                WHERE id = ?
-                LIMIT 1
-            ";
-
-            $upd = $pdo->prepare($sql);
-            $upd->execute([$id]);
-
-            $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM clientes_normales WHERE id=? LIMIT 1");
-            $ver->execute([$id]);
-            $nuevo = $ver->fetch();
-
-            if (!$nuevo) {
-                return ["ok" => false, "error" => "Se actualizó, pero no pude verificar la nueva fecha."];
-            }
-
-            return [
-                "ok" => true,
-                "id" => $id,
-                "usuario" => $nuevo["nombre"],
-                "nueva_caducidad" => $nuevo["fecha_caducidad"],
-                "estado" => $nuevo["estado"],
-                "tipo_tabla" => "clientes_normales"
-            ];
-        }
+        // Primero decide la tabla. Si el estado sabe que es normal, va a clientes_normales.
+        // Si no lo sabe, busca primero referidos y si no está busca clientes_normales.
+        $tabla = $es_normal ? "clientes_normales" : "referidos";
+        $row = null;
 
         $buscar = $pdo->prepare("
             SELECT id, nombre, fecha_caducidad
-            FROM referidos
+            FROM ".$tabla."
             WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
                OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
             ORDER BY id DESC
             LIMIT 1
         ");
         $buscar->execute([$usuario, $usuario]);
-        $ref = $buscar->fetch();
+        $row = $buscar->fetch();
 
-        if (!$ref) {
-            return ["ok" => false, "error" => "No encuentro el referido en Railway: ".$usuario];
+        if (!$row && !$es_normal) {
+            try {
+                $tabla = "clientes_normales";
+                $buscar = $pdo->prepare("
+                    SELECT id, nombre, fecha_caducidad
+                    FROM clientes_normales
+                    WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+                       OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+                    ORDER BY id DESC
+                    LIMIT 1
+                ");
+                $buscar->execute([$usuario, $usuario]);
+                $row = $buscar->fetch();
+            } catch (Throwable $e) {
+                $row = null;
+            }
         }
 
-        $id = (int)$ref["id"];
+        if (!$row) {
+            return ["ok" => false, "error" => "No encuentro el usuario en referidos ni en clientes normales: ".$usuario];
+        }
 
-        $pdo->prepare("UPDATE referidos SET fecha_caducidad = NULL WHERE id = ? AND CAST(fecha_caducidad AS CHAR) = '0000-00-00'")->execute([$id]);
+        $id = (int)$row["id"];
+
+        $pdo->prepare("UPDATE ".$tabla." SET fecha_caducidad = NULL WHERE id = ? AND CAST(fecha_caducidad AS CHAR) = '0000-00-00'")->execute([$id]);
 
         $sql = "
-            UPDATE referidos
+            UPDATE ".$tabla."
             SET fecha_caducidad = DATE_ADD(
                 CASE
                     WHEN fecha_caducidad IS NOT NULL
@@ -1869,7 +1828,7 @@ function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
         $upd = $pdo->prepare($sql);
         $upd->execute([$id]);
 
-        $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM referidos WHERE id=? LIMIT 1");
+        $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM ".$tabla." WHERE id=? LIMIT 1");
         $ver->execute([$id]);
         $nuevo = $ver->fetch();
 
@@ -1883,7 +1842,7 @@ function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
             "usuario" => $nuevo["nombre"],
             "nueva_caducidad" => $nuevo["fecha_caducidad"],
             "estado" => $nuevo["estado"],
-            "tipo_tabla" => "referidos"
+            "tipo_tabla" => $tabla
         ];
 
     } catch (Throwable $e) {
