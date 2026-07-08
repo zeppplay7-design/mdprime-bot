@@ -919,6 +919,7 @@ if (!isset($update["message"])) {
 }
 
 $chat_id = $update["message"]["chat"]["id"];
+$message_id = $update["message"]["message_id"] ?? null;
 $text = trim($update["message"]["text"] ?? "");
 
 if ($text === "") {
@@ -957,9 +958,12 @@ if ($chat_type !== "private" && in_array($command, $comandos_privados, true)) {
     $mensaje .= "Por seguridad, solo está disponible en el chat privado de MDPRIME.\n\n";
     $mensaje .= "Pulsa el botón de abajo para continuar.";
 
-    telegramRequest("sendMessage", [
+    $aviso = telegramRequest("sendMessage", [
         "chat_id" => $chat_id,
         "text" => $mensaje,
+        "disable_notification" => true,
+        "reply_to_message_id" => $message_id,
+        "allow_sending_without_reply" => true,
         "reply_markup" => json_encode([
             "inline_keyboard" => [
                 [
@@ -971,6 +975,20 @@ if ($chat_type !== "private" && in_array($command, $comandos_privados, true)) {
             ]
         ])
     ]);
+
+    // Mantener el grupo limpio: borrar el aviso del bot y el comando del usuario.
+    // Para borrar el comando del usuario, el bot debe ser administrador del grupo con permiso de borrar mensajes.
+    sleep(10);
+
+    $aviso_id = $aviso["result"]["message_id"] ?? null;
+
+    if ($aviso_id) {
+        deleteMessage($chat_id, $aviso_id);
+    }
+
+    if ($message_id) {
+        deleteMessage($chat_id, $message_id);
+    }
 
     http_response_code(200);
     exit;
