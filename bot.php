@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-NORMALES-FALLBACK-SEGURO-V36-20260709";
+$bot_version = "MDPRIME-BOT-CREAR-NORMAL-SI-NO-EXISTE-V37-20260709";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1759,19 +1759,23 @@ function tecladoAdminRenovacion($ren_id) {
 
 function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
     $meses = (int)$meses;
+    $usuario = trim((string)$usuario);
 
     if (!in_array($meses, [3, 6, 12], true)) {
         return ["ok" => false, "error" => "Duración no válida."];
     }
 
+    if ($usuario === "") {
+        return ["ok" => false, "error" => "Usuario vacío."];
+    }
+
     try {
         $pdo = getRailwayPdo();
 
-        // Primero decide la tabla. Si el estado sabe que es normal, va a clientes_normales.
-        // Si no lo sabe, busca primero referidos y si no está busca clientes_normales.
         $tabla = $es_normal ? "clientes_normales" : "referidos";
         $row = null;
 
+        // 1) Buscar en la tabla principal
         $buscar = $pdo->prepare("
             SELECT id, nombre, fecha_caducidad
             FROM ".$tabla."
@@ -1783,6 +1787,7 @@ function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
         $buscar->execute([$usuario, $usuario]);
         $row = $buscar->fetch();
 
+        // 2) Si no está en referidos, buscar en clientes normales
         if (!$row && !$es_normal) {
             try {
                 $tabla = "clientes_normales";
@@ -1801,8 +1806,40 @@ function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
             }
         }
 
+        // 3) V37: si tampoco existe, crear automáticamente cliente normal
         if (!$row) {
-            return ["ok" => false, "error" => "No encuentro el usuario en referidos ni en clientes normales: ".$usuario];
+            $tabla = "clientes_normales";
+
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS clientes_normales(
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    nombre VARCHAR(150) NOT NULL,
+                    contacto VARCHAR(150) DEFAULT '',
+                    telefono VARCHAR(150) DEFAULT '',
+                    telegram VARCHAR(100) DEFAULT '',
+                    fecha_alta DATE NULL,
+                    fecha_caducidad DATE NULL,
+                    estado VARCHAR(20) DEFAULT 'Activo',
+                    nota TEXT,
+                    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            } catch (Throwable $e) {}
+
+            $ins = $pdo->prepare("
+                INSERT INTO clientes_normales(nombre, contacto, telefono, telegram, fecha_alta, fecha_caducidad, estado, nota)
+                VALUES(?,?,?,?,CURDATE(),NULL,'Activo',?)
+            ");
+            $ins->execute([$usuario, "", "", "", "Creado automáticamente desde el bot al aprobar renovación"]);
+
+            $nuevoId = (int)$pdo->lastInsertId();
+
+            $verNuevo = $pdo->prepare("SELECT id, nombre, fecha_caducidad FROM clientes_normales WHERE id=? LIMIT 1");
+            $verNuevo->execute([$nuevoId]);
+            $row = $verNuevo->fetch();
+
+            if (!$row) {
+                return ["ok" => false, "error" => "Intenté crear cliente normal, pero no pude verificarlo."];
+            }
         }
 
         $id = (int)$row["id"];
