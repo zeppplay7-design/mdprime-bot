@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-MICUENTA-PAQUETE-PRECIOS-20260708-23";
+$bot_version = "MDPRIME-BOT-BUSQUEDA-REFERIDOS-FIX-20260708-24";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -410,6 +410,125 @@ function getAgendaJsonCache() {
 }
 
 
+
+function buscarReferidoFlexibleV24($pdo, $usuario) {
+    $usuario = trim((string)$usuario);
+    $usuario_like = "%".$usuario."%";
+
+    try {
+        $cols = $pdo->query("SHOW COLUMNS FROM referidos")->fetchAll();
+        $text_cols = [];
+
+        foreach ($cols as $col) {
+            $field = $col["Field"] ?? "";
+            $type = strtolower($col["Type"] ?? "");
+
+            if ($field !== "" && (
+                strpos($type, "char") !== false ||
+                strpos($type, "text") !== false ||
+                strpos($type, "varchar") !== false
+            )) {
+                $text_cols[] = $field;
+            }
+        }
+
+        if (empty($text_cols)) {
+            return null;
+        }
+
+        $where = [];
+        $params = [];
+
+        foreach ($text_cols as $field) {
+            $safe = str_replace("`", "", $field);
+
+            $where[] = "LOWER(TRIM(r.`".$safe."`)) = LOWER(TRIM(?))";
+            $params[] = $usuario;
+
+            $where[] = "REPLACE(LOWER(TRIM(r.`".$safe."`)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')";
+            $params[] = $usuario;
+
+            $where[] = "LOWER(TRIM(r.`".$safe."`)) LIKE LOWER(TRIM(?))";
+            $params[] = $usuario_like;
+        }
+
+        $nombre_expr = "r.nombre";
+        if (!in_array("nombre", $text_cols, true)) {
+            $nombre_expr = "r.`".$text_cols[0]."`";
+        }
+
+        $sql = "
+            SELECT 
+                r.*,
+                ".$nombre_expr." AS nombre_match_v24,
+                c.id AS referente_id,
+                c.nombre AS referente_nombre,
+                c.telegram AS referente_telegram,
+                c.contacto AS referente_contacto
+            FROM referidos r
+            INNER JOIN clientes c ON c.id = r.cliente_id
+            WHERE ".implode(" OR ", $where)."
+            ORDER BY 
+                CASE 
+                    WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
+                    THEN 0 ELSE 1
+                END,
+                r.fecha_caducidad DESC,
+                r.id DESC
+            LIMIT 1
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $ref = $stmt->fetch();
+
+        if ($ref && empty($ref["nombre"]) && !empty($ref["nombre_match_v24"])) {
+            $ref["nombre"] = $ref["nombre_match_v24"];
+        }
+
+        return $ref ?: null;
+
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+function construirRespuestaReferido($referido) {
+    $caducidad = $referido["fecha_caducidad"] ?? null;
+    $estado_real = "Inactivo";
+
+    if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
+        $estado_real = "Activo";
+    }
+
+    $dias = null;
+    if ($caducidad) {
+        $hoy = new DateTime(date("Y-m-d"));
+        $cad = new DateTime($caducidad);
+        $dias = (int)$hoy->diff($cad)->format("%r%a");
+    }
+
+    return [
+        "ok" => true,
+        "tipo" => "referido",
+        "referido" => [
+            "id" => (int)($referido["id"] ?? 0),
+            "nombre" => $referido["nombre"] ?? ($referido["nombre_match_v24"] ?? "Sin nombre"),
+            "estado" => $estado_real,
+            "fecha_alta" => (!empty($referido["fecha_alta"])) ? date("d/m/Y", strtotime($referido["fecha_alta"])) : "Sin fecha",
+            "caducidad" => ($caducidad) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
+            "dias" => $dias,
+            "nota" => $referido["nota"] ?? ""
+        ],
+        "referente" => [
+            "id" => (int)($referido["referente_id"] ?? 0),
+            "nombre" => $referido["referente_nombre"] ?? "",
+            "telegram" => $referido["referente_telegram"] ?? "",
+            "contacto" => $referido["referente_contacto"] ?? ""
+        ]
+    ];
+}
+
 function consultarClienteApi($usuario) {
     global $db_host, $db_port, $db_name, $db_user, $db_pass;
 
@@ -625,39 +744,15 @@ function consultarClienteApi($usuario) {
         }
 
         if ($referido) {
-            $caducidad = $referido["fecha_caducidad"] ?? null;
-            $estado_real = "Inactivo";
+            return construirRespuestaReferido($referido);
+        }
 
-            if (($referido["estado"] ?? "") === "Activo" && (!$caducidad  || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-                $estado_real = "Activo";
-            }
+        // Fallback V24: búsqueda robusta por todas las columnas de texto de referidos.
+        // Esto corrige referidos creados por el panel que puedan quedar guardados con otro formato/campo.
+        $referido_flexible = buscarReferidoFlexibleV24($pdo, $usuario);
 
-            $dias = null;
-            if ($caducidad ) {
-                $hoy = new DateTime(date("Y-m-d"));
-                $cad = new DateTime($caducidad);
-                $dias = (int)$hoy->diff($cad)->format("%r%a");
-            }
-
-            return [
-                "ok" => true,
-                "tipo" => "referido",
-                "referido" => [
-                    "id" => (int)$referido["id"],
-                    "nombre" => $referido["nombre"],
-                    "estado" => $estado_real,
-                    "fecha_alta" => (!empty($referido["fecha_alta"]) ) ? date("d/m/Y", strtotime($referido["fecha_alta"])) : "Sin fecha",
-                    "caducidad" => ($caducidad ) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
-                    "dias" => $dias,
-                    "nota" => $referido["nota"] ?? ""
-                ],
-                "referente" => [
-                    "id" => (int)$referido["referente_id"],
-                    "nombre" => $referido["referente_nombre"],
-                    "telegram" => $referido["referente_telegram"] ?? "",
-                    "contacto" => $referido["referente_contacto"] ?? ""
-                ]
-            ];
+        if ($referido_flexible) {
+            return construirRespuestaReferido($referido_flexible);
         }
 
         return [
