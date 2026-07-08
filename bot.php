@@ -1279,8 +1279,10 @@ La V9 es la más nueva.
 Puede ser:
 
 • Tu nombre de referente
-• Tu usuario de Telegram registrado
 • El nombre del referido
+• debes de estar en la base de datos
+• si no estas contacta con @zeppplay
+
 
 Ejemplo:
 Canelobel");
