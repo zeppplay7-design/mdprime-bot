@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-APROBAR-RENOVACION-AUTO-20260708-28";
+$bot_version = "MDPRIME-BOT-APROBAR-RENOVACION-FIX-FECHA-V29-20260708";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1746,12 +1746,16 @@ function aplicarRenovacionRailway($usuario, $meses) {
 
         $id = (int)$ref["id"];
 
+        // V29 FIX: evitar error MySQL con fechas '0000-00-00'.
+        // Primero limpiamos la fecha inválida del referido concreto.
+        $fixFecha = $pdo->prepare("UPDATE referidos SET fecha_caducidad = NULL WHERE id = ? AND fecha_caducidad = '0000-00-00'");
+        $fixFecha->execute([$id]);
+
         $sql = "
             UPDATE referidos
             SET fecha_caducidad = DATE_ADD(
                 CASE
                     WHEN fecha_caducidad IS NOT NULL
-                     AND fecha_caducidad <> '0000-00-00'
                      AND fecha_caducidad >= CURDATE()
                     THEN fecha_caducidad
                     ELSE CURDATE()
