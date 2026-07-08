@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-BUSQUEDA-REFERIDOS-FIX-20260708-24";
+$bot_version = "MDPRIME-BOT-BUSQUEDA-DIRECTA-REFERIDOS-20260708-25";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -493,6 +493,89 @@ function buscarReferidoFlexibleV24($pdo, $usuario) {
     }
 }
 
+
+function buscarReferidoDirectoSinJoinV25($pdo, $usuario) {
+    $usuario = trim((string)$usuario);
+    $usuario_like = "%".$usuario."%";
+
+    try {
+        $cols = $pdo->query("SHOW COLUMNS FROM referidos")->fetchAll();
+        $text_cols = [];
+
+        foreach ($cols as $col) {
+            $field = $col["Field"] ?? "";
+            $type = strtolower($col["Type"] ?? "");
+
+            if ($field !== "" && (
+                strpos($type, "char") !== false ||
+                strpos($type, "text") !== false ||
+                strpos($type, "varchar") !== false
+            )) {
+                $text_cols[] = $field;
+            }
+        }
+
+        if (empty($text_cols)) {
+            return null;
+        }
+
+        $where = [];
+        $params = [];
+
+        foreach ($text_cols as $field) {
+            $safe = str_replace("`", "", $field);
+
+            $where[] = "LOWER(TRIM(`".$safe."`)) = LOWER(TRIM(?))";
+            $params[] = $usuario;
+
+            $where[] = "REPLACE(LOWER(TRIM(`".$safe."`)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')";
+            $params[] = $usuario;
+
+            $where[] = "LOWER(TRIM(`".$safe."`)) LIKE LOWER(TRIM(?))";
+            $params[] = $usuario_like;
+        }
+
+        $sql = "
+            SELECT *
+            FROM referidos
+            WHERE ".implode(" OR ", $where)."
+            ORDER BY id DESC
+            LIMIT 1
+        ";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $ref = $stmt->fetch();
+
+        if (!$ref) {
+            return null;
+        }
+
+        $ref["referente_id"] = (int)($ref["cliente_id"] ?? 0);
+        $ref["referente_nombre"] = "No disponible";
+        $ref["referente_telegram"] = "";
+        $ref["referente_contacto"] = "";
+
+        if (!empty($ref["cliente_id"])) {
+            $st = $pdo->prepare("SELECT id,nombre,telegram,contacto FROM clientes WHERE id=? LIMIT 1");
+            $st->execute([(int)$ref["cliente_id"]]);
+            $cli = $st->fetch();
+
+            if ($cli) {
+                $ref["referente_id"] = (int)$cli["id"];
+                $ref["referente_nombre"] = $cli["nombre"] ?? "No disponible";
+                $ref["referente_telegram"] = $cli["telegram"] ?? "";
+                $ref["referente_contacto"] = $cli["contacto"] ?? "";
+            }
+        }
+
+        return $ref;
+
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 function construirRespuestaReferido($referido) {
     $caducidad = $referido["fecha_caducidad"] ?? null;
     $estado_real = "Inactivo";
@@ -753,6 +836,14 @@ function consultarClienteApi($usuario) {
 
         if ($referido_flexible) {
             return construirRespuestaReferido($referido_flexible);
+        }
+
+        // Fallback V25: búsqueda directa en referidos sin INNER JOIN.
+        // Sirve para detectar registros creados aunque la relación cliente_id tenga algún problema.
+        $referido_directo = buscarReferidoDirectoSinJoinV25($pdo, $usuario);
+
+        if ($referido_directo) {
+            return construirRespuestaReferido($referido_directo);
         }
 
         return [
@@ -2358,6 +2449,34 @@ Después envía el comprobante.";
         $ok = optimizarIndicesRailway();
 
         sendMessage($chat_id, $ok ? "✅ Índices de Railway optimizados correctamente." : "❌ No se pudieron optimizar los índices.");
+        break;
+
+    case "/debugrefs":
+
+        if ((string)$chat_id !== (string)$admin_id) {
+            sendMessage($chat_id, "❌ Comando reservado para administración.");
+            break;
+        }
+
+        try {
+            $pdo = getRailwayPdo();
+            $rows = $pdo->query("SELECT id, cliente_id, nombre, estado, fecha_alta, fecha_caducidad FROM referidos ORDER BY id DESC LIMIT 12")->fetchAll();
+
+            $msg = "🧪 ÚLTIMOS REFERIDOS EN RAILWAY\n\n";
+
+            foreach ($rows as $r) {
+                $msg .= "#".$r["id"]." · ".$r["nombre"]."\n";
+                $msg .= "cliente_id: ".$r["cliente_id"]." · estado: ".$r["estado"]."\n";
+                $msg .= "alta: ".$r["fecha_alta"]." · caduca: ".$r["fecha_caducidad"]."\n";
+                $msg .= "━━━━━━━━━━━━━━\n";
+            }
+
+            sendLongMessage($chat_id, $msg);
+
+        } catch (Throwable $e) {
+            sendMessage($chat_id, "❌ Error debugrefs:\n".$e->getMessage());
+        }
+
         break;
 
     case "/debugmd":
