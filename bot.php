@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-FIX-PAGO-FECHA-0000-V31-20260708";
+$bot_version = "MDPRIME-BOT-ABRIR-CHAT-ADMIN-V33-20260708";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1643,6 +1643,9 @@ function tecladoAdminRenovacion($ren_id) {
                 ["text" => "✅ Aprobar renovación", "callback_data" => "admin_ren_ok_".$ren_id]
             ],
             [
+                ["text" => "💬 Abrir chat", "callback_data" => "admin_ren_chat_".$ren_id]
+            ],
+            [
                 ["text" => "❌ Rechazar pago", "callback_data" => "admin_ren_no_".$ren_id]
             ]
         ]
@@ -1872,7 +1875,7 @@ if (isset($update["callback_query"])) {
 
     $states = loadStates($state_file);
 
-    if (strpos($callback_data, "admin_ren_ok_") === 0 || strpos($callback_data, "admin_ren_no_") === 0) {
+    if (strpos($callback_data, "admin_ren_ok_") === 0 || strpos($callback_data, "admin_ren_no_") === 0 || strpos($callback_data, "admin_ren_chat_") === 0) {
         if ((string)$chat_id !== (string)$admin_id) {
             answerCallbackQuery($callback_id, "No autorizado.");
             http_response_code(200);
@@ -1880,14 +1883,48 @@ if (isset($update["callback_query"])) {
         }
 
         $aprobar = strpos($callback_data, "admin_ren_ok_") === 0;
-        $ren_id = $aprobar
-            ? substr($callback_data, strlen("admin_ren_ok_"))
-            : substr($callback_data, strlen("admin_ren_no_"));
+        $abrir_chat = strpos($callback_data, "admin_ren_chat_") === 0;
+
+        if ($aprobar) {
+            $ren_id = substr($callback_data, strlen("admin_ren_ok_"));
+        } elseif ($abrir_chat) {
+            $ren_id = substr($callback_data, strlen("admin_ren_chat_"));
+        } else {
+            $ren_id = substr($callback_data, strlen("admin_ren_no_"));
+        }
 
         $pendiente = obtenerRenovacionPendienteAdmin($states, $ren_id);
 
         if (!$pendiente) {
             editMessageText($chat_id, $message_id, "ℹ️ Esta renovación ya fue gestionada o no existe.");
+            http_response_code(200);
+            exit;
+        }
+
+        if ($abrir_chat) {
+            $usuario = $pendiente["usuario"] ?? "Sin usuario";
+            $cliente_chat_id = $pendiente["chat_id_cliente"] ?? "";
+            $from_cliente = $pendiente["telegram_from"] ?? [];
+
+            $nombreTelegram = trim(
+                ($from_cliente["first_name"] ?? "") . " " .
+                ($from_cliente["last_name"] ?? "")
+            );
+            $aliasTelegram = $from_cliente["username"] ?? "";
+            $aliasTxt = $aliasTelegram !== "" ? "@".$aliasTelegram : "Sin alias público";
+            $linkTelegram = $aliasTelegram !== "" ? "https://t.me/".$aliasTelegram : "No disponible";
+            $mesesInfo = (int)($pendiente["meses"] ?? 0);
+            $precioInfo = renovarPrecioDesdeData($pendiente);
+            $tipoInfo = renovarTipoDesdeData($pendiente);
+            $nivelInfo = !empty($pendiente["es_vip"]) ? renovarNivelTxt($pendiente["nivel"] ?? "") : "Plan normal";
+
+            answerCallbackQuery($callback_id, "Datos del cliente enviados.");
+
+            sendMessage(
+                $chat_id,
+                "💬 DATOS PARA CONTACTAR\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan:\n".$tipoInfo."\n\n🏆 Paquete / nivel:\n".$nivelInfo."\n\n⏳ Meses:\n".$mesesInfo."\n\n💶 Importe:\n".$precioInfo."€\n\n━━━━━━━━━━━━━━━━━━\n\nPara responder desde el bot:\n/reply ".$cliente_chat_id." Hola ".$usuario.", "
+            );
+
             http_response_code(200);
             exit;
         }
@@ -1904,16 +1941,20 @@ if (isset($update["callback_query"])) {
 
                 $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
 
+                $precio = renovarPrecioDesdeData($pendiente);
+                $tipo = renovarTipoDesdeData($pendiente);
+                $nivelTxt = !empty($pendiente["es_vip"]) ? renovarNivelTxt($pendiente["nivel"] ?? "") : "Plan normal";
+
                 editMessageText(
                     $chat_id,
                     $message_id,
-                    "✅ RENOVACIÓN APROBADA Y APLICADA\n\n👤 Usuario:\n".$usuario."\n\n📦 Meses añadidos:\n".$meses."\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados."
+                    "✅ RENOVACIÓN APROBADA Y APLICADA\n\n👤 Usuario:\n".$usuario."\n\n📦 Plan contratado:\n".$tipo."\n\n🏆 Paquete / nivel:\n".$nivelTxt."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados."
                 );
 
                 if ($cliente_chat_id !== "") {
                     sendMessage(
                         $cliente_chat_id,
-                        "✅ Pago aprobado.\n\nTu renovación se ha aplicado correctamente.\n\n📦 Meses añadidos: ".$meses."\n📅 Nueva caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME."
+                        "✅ Pago aprobado.\n\nTu renovación se ha aplicado correctamente.\n\n📦 Plan contratado: ".$tipo."\n🏆 Paquete / nivel: ".$nivelTxt."\n⏳ Meses añadidos: ".$meses."\n💶 Importe pagado: ".$precio."€\n📅 Nueva caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME."
                     );
                 }
 
