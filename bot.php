@@ -91,7 +91,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-GRUPO-LIMPIO-SILENCIOSO-20260708-14";
+$bot_version = "MDPRIME-BOT-GRUPOS-SILENCIO-PRIVADO-SONIDO-20260708-15";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -121,7 +121,7 @@ function sendMessage($chat_id, $text, $keyboard = true) {
     $data = [
         "chat_id" => $chat_id,
         "text" => $text,
-        "disable_notification" => true
+        "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
     ];
 
     if ($keyboard) {
@@ -164,7 +164,7 @@ function sendInlineMessage($chat_id, $text, $reply_markup = null) {
     $data = [
         "chat_id" => $chat_id,
         "text" => $text,
-        "disable_notification" => true
+        "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
     ];
 
     if ($reply_markup) {
