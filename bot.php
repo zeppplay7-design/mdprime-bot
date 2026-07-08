@@ -108,45 +108,54 @@ function telegramRequest($method, $data = []) {
     return $response ? json_decode($response, true) : null;
 }
 
+function getMenuInlineKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "📦 Planes", "callback_data" => "cmd:planes"],
+                ["text" => "👥 Referidos", "callback_data" => "cmd:referidos"]
+            ],
+            [
+                ["text" => "👤 Mi cuenta", "callback_data" => "cmd:micuenta"],
+                ["text" => "📅 Caducidad", "callback_data" => "cmd:caducidad"]
+            ],
+            [
+                ["text" => "👥 Mis referidos", "callback_data" => "cmd:misreferidos"],
+                ["text" => "🔄 Cambiar usuario", "callback_data" => "cmd:cambiarusuario"]
+            ],
+            [
+                ["text" => "❓ Qué es referidos", "callback_data" => "cmd:queesreferidos"],
+                ["text" => "📲 Apps", "callback_data" => "cmd:apps"]
+            ],
+            [
+                ["text" => "🏆 Agenda", "callback_data" => "cmd:agenda"],
+                ["text" => "🔄 Renovar", "callback_data" => "cmd:renovar"]
+            ],
+            [
+                ["text" => "💳 Pagar", "callback_data" => "cmd:pagar"],
+                ["text" => "🛠 Soporte", "callback_data" => "cmd:soporte"]
+            ]
+        ]
+    ];
+}
+
+function sendMenu($chat_id) {
+    $texto = "🤖 MDPRIME SUPPORT\n\nSelecciona una opción:";
+
+    return telegramRequest("sendMessage", [
+        "chat_id" => $chat_id,
+        "text" => $texto,
+        "disable_notification" => true,
+        "reply_markup" => json_encode(getMenuInlineKeyboard())
+    ]);
+}
+
 function sendMessage($chat_id, $text, $keyboard = true) {
     $data = [
         "chat_id" => $chat_id,
         "text" => $text,
         "disable_notification" => true
     ];
-
-    if ($keyboard) {
-        $data["reply_markup"] = json_encode([
-            "keyboard" => [
-                [
-                    ["text" => "/planes"],
-                    ["text" => "/referidos"]
-                ],
-                [
-                    ["text" => "/micuenta"],
-                    ["text" => "/caducidad"]
-                ],
-                [
-                    ["text" => "/misreferidos"],
-                    ["text" => "/cambiarusuario"]
-                ],
-                [
-                    ["text" => "/queesreferidos"],
-                    ["text" => "/apps"]
-                ],
-                [
-                    ["text" => "/agenda"],
-                    ["text" => "/renovar"]
-                ],
-                [
-                    ["text" => "/pagar"],
-                    ["text" => "/soporte"]
-                ]
-            ],
-            "resize_keyboard" => true,
-            "one_time_keyboard" => false
-        ]);
-    }
 
     return telegramRequest("sendMessage", $data);
 }
@@ -181,6 +190,14 @@ function deleteMessage($chat_id, $message_id) {
         "chat_id" => $chat_id,
         "message_id" => $message_id
     ]);
+}
+
+function answerCallback($callback_id) {
+    if ($callback_id) {
+        telegramRequest("answerCallbackQuery", [
+            "callback_query_id" => $callback_id
+        ]);
+    }
 }
 
 /* =========================
@@ -914,6 +931,29 @@ if (!$content) {
 
 $update = json_decode($content, true);
 
+$callback_id = null;
+
+if (isset($update["callback_query"])) {
+    $callback_id = $update["callback_query"]["id"] ?? null;
+    $callback_data = $update["callback_query"]["data"] ?? "";
+    $callback_message = $update["callback_query"]["message"] ?? [];
+
+    answerCallback($callback_id);
+
+    if (strpos($callback_data, "cmd:") === 0) {
+        $callback_cmd = substr($callback_data, 4);
+        $update["message"] = $callback_message;
+        $update["message"]["text"] = "/".$callback_cmd;
+    } else {
+        $chat_id_tmp = $callback_message["chat"]["id"] ?? null;
+        if ($chat_id_tmp) {
+            sendMenu($chat_id_tmp);
+        }
+        http_response_code(200);
+        exit;
+    }
+}
+
 if (!isset($update["message"])) {
     http_response_code(200);
     exit;
@@ -1253,7 +1293,12 @@ Contactar con soporte.
 
 ⭐ Gracias por confiar en MDPRIME.";
 
-        sendMessage($chat_id, $msg);
+        sendMessage($chat_id, $msg, false);
+
+        if (($update["message"]["chat"]["type"] ?? "private") === "private") {
+            sendMenu($chat_id);
+        }
+
         break;
 
     case "/planes":
