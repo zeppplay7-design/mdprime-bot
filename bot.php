@@ -91,7 +91,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-PRIVADO-SILENCIOSO-20260708-13";
+$bot_version = "MDPRIME-BOT-GRUPO-LIMPIO-SILENCIOSO-20260708-14";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -961,7 +961,7 @@ $message_id = $update["message"]["message_id"] ?? null;
 
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
-$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario"];
+$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/soporte"];
 
 if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
     if ($message_id) {
@@ -998,6 +998,15 @@ if (in_array($command, $private_group_commands, true) && $chat_type !== "private
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
 $saved_usuario = getSavedUsuario($states, $chat_id);
+
+// Seguridad extra para grupos:
+// si quedó un estado antiguo pendiente en un grupo, se limpia y NO se responde allí.
+// Esto evita que aparezca el mensaje "Introduce tu usuario..." en el grupo.
+if ($chat_type !== "private" && $user_state !== "") {
+    clearUserMode($state_file, $states, $chat_id);
+    http_response_code(200);
+    exit;
+}
 
 // Si el usuario escribe otro comando mientras el bot esperaba un dato,
 // cancelamos el estado anterior para que el comando funcione normal.
