@@ -78,6 +78,8 @@ if (isset($_SERVER["REQUEST_URI"])) {
 
 $token = "8445421276:AAEgTw6jjvEI98YgnN9wZsAzE6MM8ajj_AQ";
 $admin_id = "372918983";
+$bot_username = "MDPRIME_SUPPOR_BOT";
+$bot_link = "https://t.me/MDPRIME_SUPPOR_BOT";
 $state_file = "states.json";
 $agenda_cache_file = __DIR__ . "/agenda_cache.json";
 
@@ -89,7 +91,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-SILENCIOSO-20260708-12";
+$bot_version = "MDPRIME-BOT-PRIVADO-SILENCIOSO-20260708-13";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -153,6 +155,20 @@ function sendMessage($chat_id, $text, $keyboard = true) {
             "resize_keyboard" => true,
             "one_time_keyboard" => false
         ]);
+    }
+
+    return telegramRequest("sendMessage", $data);
+}
+
+function sendInlineMessage($chat_id, $text, $reply_markup = null) {
+    $data = [
+        "chat_id" => $chat_id,
+        "text" => $text,
+        "disable_notification" => true
+    ];
+
+    if ($reply_markup) {
+        $data["reply_markup"] = json_encode($reply_markup);
     }
 
     return telegramRequest("sendMessage", $data);
@@ -939,6 +955,45 @@ $command = explode("@", $command)[0];
 
 $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
+
+$chat_type = $update["message"]["chat"]["type"] ?? "private";
+$message_id = $update["message"]["message_id"] ?? null;
+
+// Comandos privados usados dentro de grupos:
+// se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
+$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario"];
+
+if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
+    if ($message_id) {
+        deleteMessage($chat_id, $message_id);
+    }
+
+    $aviso = "🔒 Esta consulta es privada.\n\nPara proteger tus datos, abre el bot en privado y usa el comando allí.";
+
+    $keyboard_inline = [
+        "inline_keyboard" => [
+            [
+                [
+                    "text" => "🔒 Abrir MDPRIME Bot",
+                    "url" => $bot_link
+                ]
+            ]
+        ]
+    ];
+
+    $sent = sendInlineMessage($chat_id, $aviso, $keyboard_inline);
+    $aviso_id = $sent["result"]["message_id"] ?? null;
+
+    if ($aviso_id) {
+        sleep(8);
+        deleteMessage($chat_id, $aviso_id);
+    }
+
+    http_response_code(200);
+    exit;
+}
+
+
 
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
