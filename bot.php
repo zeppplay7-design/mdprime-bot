@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-APROBAR-RENOVACION-FIX-FECHA-V29-20260708";
+$bot_version = "MDPRIME-BOT-BUSQUEDA-EXACTA-SEGURIDAD-V30-20260708";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -413,61 +413,19 @@ function getAgendaJsonCache() {
 
 function buscarReferidoFlexibleV24($pdo, $usuario) {
     $usuario = trim((string)$usuario);
-    $usuario_like = "%".$usuario."%";
 
     try {
-        $cols = $pdo->query("SHOW COLUMNS FROM referidos")->fetchAll();
-        $text_cols = [];
-
-        foreach ($cols as $col) {
-            $field = $col["Field"] ?? "";
-            $type = strtolower($col["Type"] ?? "");
-
-            if ($field !== "" && (
-                strpos($type, "char") !== false ||
-                strpos($type, "text") !== false ||
-                strpos($type, "varchar") !== false
-            )) {
-                $text_cols[] = $field;
-            }
-        }
-
-        if (empty($text_cols)) {
-            return null;
-        }
-
-        $where = [];
-        $params = [];
-
-        foreach ($text_cols as $field) {
-            $safe = str_replace("`", "", $field);
-
-            $where[] = "LOWER(TRIM(r.`".$safe."`)) = LOWER(TRIM(?))";
-            $params[] = $usuario;
-
-            $where[] = "REPLACE(LOWER(TRIM(r.`".$safe."`)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')";
-            $params[] = $usuario;
-
-            $where[] = "LOWER(TRIM(r.`".$safe."`)) LIKE LOWER(TRIM(?))";
-            $params[] = $usuario_like;
-        }
-
-        $nombre_expr = "r.nombre";
-        if (!in_array("nombre", $text_cols, true)) {
-            $nombre_expr = "r.`".$text_cols[0]."`";
-        }
-
-        $sql = "
+        $stmt = $pdo->prepare("
             SELECT 
                 r.*,
-                ".$nombre_expr." AS nombre_match_v24,
                 c.id AS referente_id,
                 c.nombre AS referente_nombre,
                 c.telegram AS referente_telegram,
                 c.contacto AS referente_contacto
             FROM referidos r
             INNER JOIN clientes c ON c.id = r.cliente_id
-            WHERE ".implode(" OR ", $where)."
+            WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
             ORDER BY 
                 CASE 
                     WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
@@ -476,15 +434,9 @@ function buscarReferidoFlexibleV24($pdo, $usuario) {
                 r.fecha_caducidad DESC,
                 r.id DESC
             LIMIT 1
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        ");
+        $stmt->execute([$usuario, $usuario]);
         $ref = $stmt->fetch();
-
-        if ($ref && empty($ref["nombre"]) && !empty($ref["nombre_match_v24"])) {
-            $ref["nombre"] = $ref["nombre_match_v24"];
-        }
 
         return $ref ?: null;
 
@@ -493,58 +445,19 @@ function buscarReferidoFlexibleV24($pdo, $usuario) {
     }
 }
 
-
 function buscarReferidoDirectoSinJoinV25($pdo, $usuario) {
     $usuario = trim((string)$usuario);
-    $usuario_like = "%".$usuario."%";
 
     try {
-        $cols = $pdo->query("SHOW COLUMNS FROM referidos")->fetchAll();
-        $text_cols = [];
-
-        foreach ($cols as $col) {
-            $field = $col["Field"] ?? "";
-            $type = strtolower($col["Type"] ?? "");
-
-            if ($field !== "" && (
-                strpos($type, "char") !== false ||
-                strpos($type, "text") !== false ||
-                strpos($type, "varchar") !== false
-            )) {
-                $text_cols[] = $field;
-            }
-        }
-
-        if (empty($text_cols)) {
-            return null;
-        }
-
-        $where = [];
-        $params = [];
-
-        foreach ($text_cols as $field) {
-            $safe = str_replace("`", "", $field);
-
-            $where[] = "LOWER(TRIM(`".$safe."`)) = LOWER(TRIM(?))";
-            $params[] = $usuario;
-
-            $where[] = "REPLACE(LOWER(TRIM(`".$safe."`)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')";
-            $params[] = $usuario;
-
-            $where[] = "LOWER(TRIM(`".$safe."`)) LIKE LOWER(TRIM(?))";
-            $params[] = $usuario_like;
-        }
-
-        $sql = "
+        $stmt = $pdo->prepare("
             SELECT *
             FROM referidos
-            WHERE ".implode(" OR ", $where)."
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
             ORDER BY id DESC
             LIMIT 1
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        ");
+        $stmt->execute([$usuario, $usuario]);
         $ref = $stmt->fetch();
 
         if (!$ref) {
@@ -812,7 +725,6 @@ function consultarClienteApi($usuario) {
                 INNER JOIN clientes c ON c.id = r.cliente_id
                 WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
                    OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                   OR LOWER(TRIM(r.nombre)) LIKE LOWER(TRIM(?))
                 ORDER BY 
                     CASE 
                         WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
@@ -822,11 +734,29 @@ function consultarClienteApi($usuario) {
                     r.id DESC
                 LIMIT 1
             ");
-            $stmt->execute([$usuario, $usuario, $usuario_like]);
+            $stmt->execute([$usuario, $usuario]);
             $referido = $stmt->fetch();
         }
 
         if ($referido) {
+            // Seguridad V30: si hay más de un referido con el mismo nombre exacto normalizado, no se autoguarda.
+            $chkDup = $pdo->prepare("
+                SELECT COUNT(*)
+                FROM referidos
+                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            ");
+            $chkDup->execute([$usuario, $usuario]);
+            $numDup = (int)$chkDup->fetchColumn();
+
+            if ($numDup > 1) {
+                return [
+                    "ok" => false,
+                    "error" => "Hay varios usuarios parecidos con ese nombre. Por seguridad, escribe el usuario exacto completo tal como aparece en el panel.",
+                    "buscado" => $usuario
+                ];
+            }
+
             return construirRespuestaReferido($referido);
         }
 
