@@ -1274,7 +1274,7 @@ La V9 es la más nueva.
         } else {
             setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", $command);
 
-            sendMessage($chat_id, "👤 Introduce tu usuario MDPRIME.
+            sendMessage($chat_id, "👤 Introduce tu usuario de P2P.
 
 Puede ser:
 
