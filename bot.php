@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-NO-REFERIDO-PRECIOS-NORMALES-20260708-26";
+$bot_version = "MDPRIME-BOT-PAQUETE-AUTO-VIP-20260708-27";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1836,15 +1836,30 @@ if (isset($update["callback_query"])) {
     if (strpos($callback_data, "ren_dur_") === 0) {
         $meses = (int)str_replace("ren_dur_", "", $callback_data);
         $ren_data["meses"] = $meses;
-        guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
 
         if (!empty($ren_data["es_vip"])) {
-            editMessageText(
-                $chat_id,
-                $message_id,
-                "🏆 REFERIDOS VIP\n\nSelecciona tu nivel de referidos:",
-                renovarNivelKeyboard($ren_data["nivel_actual"] ?? "")
-            );
+            // V27: si el sistema ya sabe el nivel, no se pregunta paquete.
+            $nivel_auto = strtolower(trim($ren_data["nivel_actual"] ?? ""));
+
+            if ($nivel_auto !== "") {
+                $ren_data["nivel"] = $nivel_auto;
+                guardarComprobanteRenovacionEstado($state_file, $states, $chat_id, $ren_data);
+
+                editMessageText(
+                    $chat_id,
+                    $message_id,
+                    mensajePagoRenovacion($ren_data)
+                );
+            } else {
+                guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
+
+                editMessageText(
+                    $chat_id,
+                    $message_id,
+                    "🏆 REFERIDOS VIP\n\nNo he podido detectar automáticamente tu nivel.\nSelecciona tu nivel de referidos:",
+                    renovarNivelKeyboard($ren_data["nivel_actual"] ?? "")
+                );
+            }
         } else {
             guardarComprobanteRenovacionEstado($state_file, $states, $chat_id, $ren_data);
 
