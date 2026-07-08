@@ -111,7 +111,8 @@ function telegramRequest($method, $data = []) {
 function sendMessage($chat_id, $text, $keyboard = true) {
     $data = [
         "chat_id" => $chat_id,
-        "text" => $text
+        "text" => $text,
+        "disable_notification" => true
     ];
 
     if ($keyboard) {
