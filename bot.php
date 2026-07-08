@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-PAQUETE-AUTO-VIP-20260708-27";
+$bot_version = "MDPRIME-BOT-APROBAR-RENOVACION-AUTO-20260708-28";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1678,6 +1678,124 @@ function limpiarComprobanteRenovacionEstado($file, &$states, $chat_id) {
     }
 }
 
+function guardarRenovacionPendienteAdmin($file, &$states, $ren_id, $data) {
+    if (!isset($states["_renovaciones_pendientes"]) || !is_array($states["_renovaciones_pendientes"])) {
+        $states["_renovaciones_pendientes"] = [];
+    }
+
+    $data["ren_id"] = $ren_id;
+    $data["creado_en"] = date("Y-m-d H:i:s");
+    $states["_renovaciones_pendientes"][$ren_id] = $data;
+
+    saveStates($file, $states);
+}
+
+function obtenerRenovacionPendienteAdmin($states, $ren_id) {
+    return $states["_renovaciones_pendientes"][$ren_id] ?? null;
+}
+
+function borrarRenovacionPendienteAdmin($file, &$states, $ren_id) {
+    if (isset($states["_renovaciones_pendientes"][$ren_id])) {
+        unset($states["_renovaciones_pendientes"][$ren_id]);
+    }
+
+    if (isset($states["_renovaciones_pendientes"]) && empty($states["_renovaciones_pendientes"])) {
+        unset($states["_renovaciones_pendientes"]);
+    }
+
+    saveStates($file, $states);
+}
+
+function tecladoAdminRenovacion($ren_id) {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "✅ Aprobar renovación", "callback_data" => "admin_ren_ok_".$ren_id]
+            ],
+            [
+                ["text" => "❌ Rechazar pago", "callback_data" => "admin_ren_no_".$ren_id]
+            ]
+        ]
+    ];
+}
+
+function aplicarRenovacionRailway($usuario, $meses) {
+    $meses = (int)$meses;
+
+    if (!in_array($meses, [3, 6, 12], true)) {
+        return ["ok" => false, "error" => "Duración no válida."];
+    }
+
+    try {
+        $pdo = getRailwayPdo();
+
+        $buscar = $pdo->prepare("
+            SELECT id, nombre, fecha_caducidad
+            FROM referidos
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $buscar->execute([$usuario, $usuario]);
+        $ref = $buscar->fetch();
+
+        if (!$ref) {
+            return ["ok" => false, "error" => "No encuentro el referido en Railway: ".$usuario];
+        }
+
+        $id = (int)$ref["id"];
+
+        $sql = "
+            UPDATE referidos
+            SET fecha_caducidad = DATE_ADD(
+                CASE
+                    WHEN fecha_caducidad IS NOT NULL
+                     AND fecha_caducidad <> '0000-00-00'
+                     AND fecha_caducidad >= CURDATE()
+                    THEN fecha_caducidad
+                    ELSE CURDATE()
+                END,
+                INTERVAL ".$meses." MONTH
+            ),
+            estado = 'Activo'
+            WHERE id = ?
+            LIMIT 1
+        ";
+
+        $upd = $pdo->prepare($sql);
+        $upd->execute([$id]);
+
+        $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM referidos WHERE id=? LIMIT 1");
+        $ver->execute([$id]);
+        $nuevo = $ver->fetch();
+
+        if (!$nuevo) {
+            return ["ok" => false, "error" => "Se actualizó, pero no pude verificar la nueva fecha."];
+        }
+
+        return [
+            "ok" => true,
+            "id" => $id,
+            "usuario" => $nuevo["nombre"],
+            "nueva_caducidad" => $nuevo["fecha_caducidad"],
+            "estado" => $nuevo["estado"]
+        ];
+
+    } catch (Throwable $e) {
+        return ["ok" => false, "error" => $e->getMessage()];
+    }
+}
+
+function fechaBonita($fecha) {
+    if (!$fecha || $fecha === "0000-00-00") {
+        return "Sin fecha";
+    }
+
+    $ts = strtotime($fecha);
+    return $ts ? date("d/m/Y", $ts) : $fecha;
+}
+
 function renovarPrecioDesdeData($data) {
     $meses = (int)($data["meses"] ?? 0);
 
@@ -1819,6 +1937,81 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+
+    if (strpos($callback_data, "admin_ren_ok_") === 0 || strpos($callback_data, "admin_ren_no_") === 0) {
+        if ((string)$chat_id !== (string)$admin_id) {
+            answerCallbackQuery($callback_id, "No autorizado.");
+            http_response_code(200);
+            exit;
+        }
+
+        $aprobar = strpos($callback_data, "admin_ren_ok_") === 0;
+        $ren_id = $aprobar
+            ? substr($callback_data, strlen("admin_ren_ok_"))
+            : substr($callback_data, strlen("admin_ren_no_"));
+
+        $pendiente = obtenerRenovacionPendienteAdmin($states, $ren_id);
+
+        if (!$pendiente) {
+            editMessageText($chat_id, $message_id, "ℹ️ Esta renovación ya fue gestionada o no existe.");
+            http_response_code(200);
+            exit;
+        }
+
+        $usuario = $pendiente["usuario"] ?? "Sin usuario";
+        $meses = (int)($pendiente["meses"] ?? 0);
+        $cliente_chat_id = $pendiente["chat_id_cliente"] ?? "";
+
+        if ($aprobar) {
+            $resultado = aplicarRenovacionRailway($usuario, $meses);
+
+            if (!empty($resultado["ok"])) {
+                borrarRenovacionPendienteAdmin($state_file, $states, $ren_id);
+
+                $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
+
+                editMessageText(
+                    $chat_id,
+                    $message_id,
+                    "✅ RENOVACIÓN APROBADA Y APLICADA\n\n👤 Usuario:\n".$usuario."\n\n📦 Meses añadidos:\n".$meses."\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados."
+                );
+
+                if ($cliente_chat_id !== "") {
+                    sendMessage(
+                        $cliente_chat_id,
+                        "✅ Pago aprobado.\n\nTu renovación se ha aplicado correctamente.\n\n📦 Meses añadidos: ".$meses."\n📅 Nueva caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME."
+                    );
+                }
+
+            } else {
+                editMessageText(
+                    $chat_id,
+                    $message_id,
+                    "❌ NO SE PUDO APLICAR LA RENOVACIÓN\n\n👤 Usuario:\n".$usuario."\n\nError:\n".($resultado["error"] ?? "Error desconocido")."\n\nNo se ha borrado la solicitud pendiente."
+                );
+            }
+
+        } else {
+            borrarRenovacionPendienteAdmin($state_file, $states, $ren_id);
+
+            editMessageText(
+                $chat_id,
+                $message_id,
+                "❌ RENOVACIÓN RECHAZADA\n\n👤 Usuario:\n".$usuario."\n\nNo se han sumado meses."
+            );
+
+            if ($cliente_chat_id !== "") {
+                sendMessage(
+                    $cliente_chat_id,
+                    "❌ No hemos podido validar tu pago.\n\nNo se ha aplicado ninguna renovación.\n\nSi crees que es un error, contacta con soporte."
+                );
+            }
+        }
+
+        http_response_code(200);
+        exit;
+    }
+
     $ren_data = renovarEstado($states, $chat_id);
 
     if (strpos($callback_data, "ren_") !== 0 || empty($ren_data)) {
@@ -1945,14 +2138,25 @@ if ($user_state === "esperando_comprobante_renovacion") {
         $comp_data = obtenerComprobanteRenovacionEstado($states, $chat_id);
         $from_user = $update["message"]["from"] ?? [];
 
-        sendMessage($admin_id, mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data), false);
+        $ren_id = uniqid("r");
+        $comp_data["chat_id_cliente"] = $chat_id;
+        $comp_data["telegram_from"] = $from_user;
+
+        guardarRenovacionPendienteAdmin($state_file, $states, $ren_id, $comp_data);
+
+        sendInlineMessage(
+            $admin_id,
+            mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza la renovación.",
+            tecladoAdminRenovacion($ren_id)
+        );
+
         forwardMessage($admin_id, $chat_id, $message_id);
 
         limpiarComprobanteRenovacionEstado($state_file, $states, $chat_id);
 
         sendMessage(
             $chat_id,
-            "✅ Comprobante recibido correctamente.\n\nNuestro equipo revisará el pago y contactará contigo lo antes posible."
+            "✅ Comprobante recibido correctamente.\n\nQueda pendiente de revisión. Cuando se apruebe el pago, tu renovación se aplicará automáticamente."
         );
 
         http_response_code(200);
