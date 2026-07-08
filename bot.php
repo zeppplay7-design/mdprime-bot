@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RENOVAR-USUARIO-GUARDADO-20260708-22";
+$bot_version = "MDPRIME-BOT-MICUENTA-PAQUETE-PRECIOS-20260708-23";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -708,6 +708,23 @@ function nivelIcono($nivel) {
     return "🔒";
 }
 
+
+function textoPreciosNivelReferidos($nivel_key) {
+    $nivel_key = strtolower((string)$nivel_key);
+
+    if ($nivel_key === "") {
+        return "";
+    }
+
+    return "🏆 Paquete Referidos:
+".renovarNivelTxt($nivel_key)."
+
+💶 Precios de tu paquete:
+3 meses → ".renovarPrecioReferidos($nivel_key, 3)."€
+6 meses → ".renovarPrecioReferidos($nivel_key, 6)."€
+12 meses → ".renovarPrecioReferidos($nivel_key, 12)."€";
+}
+
 function formatMiCuenta($data) {
     if (empty($data["ok"])) {
         return "❌ ".$data["error"];
@@ -723,6 +740,15 @@ function formatMiCuenta($data) {
         $caducidad = $ref["caducidad"] ?? ($ref["fecha_caducidad"] ?? "Sin fecha");
         $alta = $ref["fecha_alta"] ?? "Sin fecha";
         $dias = $ref["dias"] ?? null;
+
+        $paquete_txt = "";
+        $referente_id = $referente["id"] ?? 0;
+
+        if ($referente_id) {
+            $info_nivel = obtenerNivelReferentePorId($referente_id);
+            $nivel_key = $info_nivel["nivel"] ?? "";
+            $paquete_txt = textoPreciosNivelReferidos($nivel_key);
+        }
 
         return "👤 MI CUENTA MDPRIME
 
@@ -744,7 +770,11 @@ function formatMiCuenta($data) {
 ".$caducidad."
 
 ⏳ Tiempo restante:
-".fmtDias($dias)."
+".fmtDias($dias).($paquete_txt !== "" ? "
+
+━━━━━━━━━━━━━━━━━━
+
+".$paquete_txt : "")."
 
 ━━━━━━━━━━━━━━━━━━
 
