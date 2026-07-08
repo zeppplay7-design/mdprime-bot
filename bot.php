@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RENOVAR-REFERIDO-NIVEL-REFERENTE-20260708-20";
+$bot_version = "MDPRIME-BOT-RENOVAR-MUESTRA-PRECIOS-20260708-21";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1033,13 +1033,30 @@ function renovarNivelTxt($nivel) {
     return "Sin nivel";
 }
 
-function renovarDuracionKeyboard() {
+function renovarDuracionKeyboard($data = []) {
+    $esVip = !empty($data["es_vip"]);
+    $nivel = $data["nivel_actual"] ?? "";
+
+    if ($esVip && $nivel !== "") {
+        $p3 = renovarPrecioReferidos($nivel, 3);
+        $p6 = renovarPrecioReferidos($nivel, 6);
+        $p12 = renovarPrecioReferidos($nivel, 12);
+    } else {
+        $p3 = renovarPrecioNormal(3);
+        $p6 = renovarPrecioNormal(6);
+        $p12 = renovarPrecioNormal(12);
+    }
+
     return [
         "inline_keyboard" => [
             [
-                ["text" => "📦 3 meses", "callback_data" => "ren_dur_3"],
-                ["text" => "📦 6 meses", "callback_data" => "ren_dur_6"],
-                ["text" => "📦 12 meses", "callback_data" => "ren_dur_12"]
+                ["text" => "📦 3 meses · ".$p3."€", "callback_data" => "ren_dur_3"]
+            ],
+            [
+                ["text" => "📦 6 meses · ".$p6."€", "callback_data" => "ren_dur_6"]
+            ],
+            [
+                ["text" => "📦 12 meses · ".$p12."€", "callback_data" => "ren_dur_12"]
             ],
             [
                 ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
@@ -1851,6 +1868,11 @@ if ($user_state === "renovar") {
 🏆 Nivel disponible:
 ".renovarNivelTxt($nivel_actual)."
 
+💶 Precios disponibles:
+3 meses → ".renovarPrecioReferidos($nivel_actual, 3)."€
+6 meses → ".renovarPrecioReferidos($nivel_actual, 6)."€
+12 meses → ".renovarPrecioReferidos($nivel_actual, 12)."€
+
 ━━━━━━━━━━━━━━━━━━
 
 Selecciona la duración de tu renovación:";
@@ -1864,10 +1886,15 @@ La renovación se realizará con tarifa estándar.
 👤 Usuario escrito:
 ".$usuario_mdprime."
 
+💶 Tarifa estándar:
+3 meses → ".renovarPrecioNormal(3)."€
+6 meses → ".renovarPrecioNormal(6)."€
+12 meses → ".renovarPrecioNormal(12)."€
+
 Selecciona la duración:";
     }
 
-    sendInlineMessage($chat_id, $msg, renovarDuracionKeyboard());
+    sendInlineMessage($chat_id, $msg, renovarDuracionKeyboard($ren_data));
 
     http_response_code(200);
     exit;
