@@ -1,2919 +1,1640 @@
 <?php
+/* MDPRIME PANEL V10 - BUSCADOR CLIENTES NORMALES - RENDER + RAILWAY */
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-/* =========================
-   RUTAS TEMPORALES WEB
-========================= */
-if (isset($_SERVER["REQUEST_URI"])) {
+// Zona horaria fija para que las caducidades se calculen con fecha real de España
+date_default_timezone_set('Europe/Madrid');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 
-    if (strpos($_SERVER["REQUEST_URI"], "ping") !== false) {
-        header("Content-Type: text/plain; charset=utf-8");
-        echo "OK";
-        exit;
-    }
+/* ===== PROTECCIÓN DE ACCESO MDPRIME - SOLO CONTRASEÑA ===== */
+session_start();
+$panel_password = 'Aa251171'; // Cambia aquí la contraseña si quieres otra
 
-
-    if (strpos($_SERVER["REQUEST_URI"], "fix_fechas_railway.php") !== false) {
-        header("Content-Type: text/plain; charset=utf-8");
-
-        if (($_GET["key"] ?? "") !== "MDPRIME_FIX_DATES_2026") {
-            http_response_code(403);
-            exit("❌ Acceso no autorizado.");
-        }
-
-        $db_host_tmp = "reseau.proxy.rlwy.net";
-        $db_port_tmp = 39553;
-        $db_name_tmp = "railway";
-        $db_user_tmp = "root";
-        $db_pass_tmp = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-
-        try {
-            $pdo = new PDO(
-                "mysql:host=$db_host_tmp;port=$db_port_tmp;dbname=$db_name_tmp;charset=utf8mb4",
-                $db_user_tmp,
-                $db_pass_tmp,
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-                ]
-            );
-
-            echo "🚀 MDPRIME FIX FECHAS INTEGRADO\n";
-            echo "━━━━━━━━━━━━━━━━━━━━━━\n";
-            echo "✅ Conectado a Railway.\n\n";
-
-            $pdo->exec("UPDATE referidos SET fecha_alta = NULL WHERE fecha_alta IS NOT NULL AND YEAR(fecha_alta) = 0");
-            $pdo->exec("UPDATE referidos SET fecha_caducidad = NULL WHERE fecha_caducidad IS NOT NULL AND YEAR(fecha_caducidad) = 0");
-
-            $total = $pdo->query("SELECT COUNT(*) FROM referidos")->fetchColumn();
-            $cadNulas = $pdo->query("SELECT COUNT(*) FROM referidos WHERE fecha_caducidad IS NULL")->fetchColumn();
-
-            echo "✅ Fechas inválidas corregidas.\n";
-            echo "Referidos: ".$total."\n";
-            echo "Caducidades sin fecha: ".$cadNulas."\n\n";
-            echo "🎉 FIX TERMINADO.\n";
-            echo "Ahora prueba /debugmd Brandon10 en Telegram.\n";
-            exit;
-
-        } catch (Throwable $e) {
-            echo "❌ ERROR FIX\n";
-            echo $e->getMessage()."\n";
-            exit;
-        }
-    }
-
-    if (strpos($_SERVER["REQUEST_URI"], "importar_railway.php") !== false) {
-        if (file_exists(__DIR__ . "/importar_railway.php")) {
-            require __DIR__ . "/importar_railway.php";
-            exit;
-        }
-        header("Content-Type: text/plain; charset=utf-8");
-        exit("❌ No encuentro importar_railway.php en Render.");
-    }
+if (isset($_GET['logout'])) {
+  session_destroy();
+  header('Location: '.$_SERVER['PHP_SELF']);
+  exit;
 }
 
-/* =========================
-   MDPRIME TELEGRAM BOT
-   Versión con Mi Cuenta + API InfinityFree
-========================= */
+$login_error = '';
+if (isset($_POST['panel_login_password'])) {
+  if (hash_equals($panel_password, (string)$_POST['panel_login_password'])) {
+    $_SESSION['mdprime_panel_auth'] = true;
+    header('Location: '.$_SERVER['PHP_SELF']);
+    exit;
+  } else {
+    $login_error = 'Contraseña incorrecta.';
+  }
+}
 
-$token = "8445421276:AAEgTw6jjvEI98YgnN9wZsAzE6MM8ajj_AQ";
-$admin_id = "372918983";
-$bot_username = "MDPRIME_SUPPOR_BOT";
-$bot_link = "https://t.me/MDPRIME_SUPPOR_BOT";
-$payment_link = "https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N";
-$state_file = "states.json";
-$agenda_cache_file = __DIR__ . "/agenda_cache.json";
+if (empty($_SESSION['mdprime_panel_auth'])) {
+  $err = $login_error ? '<div class="error">'.htmlspecialchars($login_error, ENT_QUOTES, 'UTF-8').'</div>' : '';
+  echo '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acceso MDPRIME</title><style>
+  *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 20% 0%,rgba(245,197,66,.20),transparent 28%),linear-gradient(135deg,#030405,#071018 55%,#030405);font-family:Inter,system-ui,Segoe UI,Arial;color:#fff;padding:18px}.login{width:min(430px,100%);border:1px solid rgba(245,197,66,.35);border-radius:26px;background:linear-gradient(180deg,rgba(17,24,32,.94),rgba(4,8,12,.96));box-shadow:0 24px 70px rgba(0,0,0,.65);padding:28px;text-align:center}.brand{font-size:42px;font-weight:1000;color:#f5c542;letter-spacing:-1px;margin-bottom:8px}.sub{color:#aeb7c4;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;font-size:12px;margin-bottom:24px}.lock{font-size:54px;margin-bottom:10px}input{width:100%;background:#050914;color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:16px;font-size:18px;outline:none;margin-bottom:14px}input:focus{border-color:#f5c542;box-shadow:0 0 0 4px rgba(245,197,66,.12)}button{width:100%;border:0;border-radius:16px;padding:16px;background:linear-gradient(135deg,#f5c542,#b78317);color:#111;font-weight:1000;font-size:16px;cursor:pointer}.error{margin-bottom:14px;padding:12px;border-radius:14px;background:rgba(255,59,48,.14);border:1px solid rgba(255,59,48,.35);color:#fecaca;font-weight:900}.hint{margin-top:15px;color:#94a3b8;font-size:12px}</style>
+<style id="mdBuscadorClientesVisualCss">
+.clientesSearchPanel{
+  margin:16px 0 12px;
+  padding:16px;
+  border:1px solid rgba(245,197,66,.30);
+  background:linear-gradient(180deg,rgba(17,24,32,.86),rgba(4,8,12,.91));
+  border-radius:22px;
+  box-shadow:0 24px 70px rgba(0,0,0,.35);
+}
+.clientesSearchPanel h2{
+  margin:0 0 10px;
+  font-size:24px;
+}
+.clientesSearchPanel input{
+  max-width:100%;
+}
+@media(max-width:760px){
+  .clientesSearchPanel{
+    padding:13px!important;
+    border-radius:20px!important;
+  }
+  .clientesSearchPanel h2{
+    font-size:22px!important;
+  }
+}
+</style>
 
-$api_cliente_url = "https://zeppplay-guia-mdprime.page.gd/api/cliente.php";
-$api_key = "MDPRIME_API_2026";
+
+
+<style id="mdprimeBotonesUniformesHoverFinal">
+/* ===== MDPRIME BOTONES UNIFORMES + HOVER PRO ===== */
+.clientMainActions,
+.inactivoActions{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:8px!important;
+  align-items:stretch!important;
+}
+.clientMainActions form,
+.inactivoActions form{
+  margin:0!important;
+  width:100%!important;
+  height:100%!important;
+  display:flex!important;
+}
+.clientMainActions .btn,
+.inactivoActions .btn{
+  width:100%!important;
+  min-width:0!important;
+  height:62px!important;
+  min-height:62px!important;
+  padding:8px 7px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  font-size:13px!important;
+  font-weight:1000!important;
+  line-height:1.12!important;
+  white-space:normal!important;
+  border-radius:14px!important;
+  position:relative!important;
+  transform:translateZ(0) scale(1)!important;
+  transform-origin:center!important;
+  transition:transform .18s ease, box-shadow .18s ease, filter .18s ease!important;
+  will-change:transform!important;
+}
+.clientMainActions .btn:hover,
+.inactivoActions .btn:hover{
+  transform:translateZ(0) scale(1.08)!important;
+  z-index:20!important;
+  filter:brightness(1.08)!important;
+  box-shadow:0 14px 34px rgba(0,0,0,.50), 0 0 18px rgba(245,197,66,.20)!important;
+}
+.clientMainActions .btn.red:hover,
+.inactivoActions .btn.red:hover{
+  box-shadow:0 14px 34px rgba(0,0,0,.50), 0 0 22px rgba(255,59,48,.42)!important;
+}
+.clientMainActions .btn.green:hover,
+.inactivoActions .btn.green:hover{
+  box-shadow:0 14px 34px rgba(0,0,0,.50), 0 0 22px rgba(53,208,79,.34)!important;
+}
+.clientMainActions .btnTelegramRef:hover{
+  box-shadow:0 14px 34px rgba(0,0,0,.50), 0 0 22px rgba(31,182,255,.42)!important;
+}
+@media(max-width:760px){
+  .clientMainActions,
+  .inactivoActions{
+    grid-template-columns:1fr!important;
+  }
+  .clientMainActions .btn,
+  .inactivoActions .btn{
+    height:52px!important;
+    min-height:52px!important;
+    font-size:14px!important;
+  }
+  .clientMainActions .btn:hover,
+  .inactivoActions .btn:hover{
+    transform:none!important;
+  }
+}
+</style>
+</head><body><form class="login" method="post"><div class="lock">🔒</div><div class="brand">MDPRIME</div><div class="sub">Panel privado</div>'.$err.'<input type="password" name="panel_login_password" placeholder="Introduce la contraseña" required autofocus><button>Entrar al panel</button><div class="hint">Acceso protegido por contraseña</div></form></body></html>';
+  exit;
+}
+/* ===== FIN PROTECCIÓN DE ACCESO ===== */
 
 $db_host = "reseau.proxy.rlwy.net";
 $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-CLIENTES-NORMALES-V35-20260709";
 
-/* =========================
-   FUNCIONES TELEGRAM
-========================= */
-
-function telegramRequest($method, $data = []) {
-    global $token;
-
-    $url = "https://api.telegram.org/bot".$token."/".$method;
-
-    $options = [
-        "http" => [
-            "header"  => "Content-type: application/x-www-form-urlencoded",
-            "method"  => "POST",
-            "content" => http_build_query($data),
-            "timeout" => 12
-        ]
-    ];
-
-    $context = stream_context_create($options);
-    $response = @file_get_contents($url, false, $context);
-
-    return $response ? json_decode($response, true) : null;
+function h($v){ return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+function clean($v){ return trim(strip_tags((string)$v)); }
+function dnull($v){ $v=clean($v); return preg_match('/^\d{4}-\d{2}-\d{2}$/',$v)?$v:null; }
+function euro($v){ return ((float)$v>0) ? rtrim(rtrim(number_format((float)$v,2,',','.'),'0'),',').'€' : '-'; }
+function fechaTxt($v){ return ($v && $v !== '0000-00-00') ? date('d/m/Y', strtotime($v)) : 'Sin fecha'; }
+function redirectBack($msg){
+  $url = $_SERVER['PHP_SELF'].'?msg='.urlencode($msg);
+  if(!empty($_POST['return_modal'])){
+    $url .= '&open='.urlencode(clean($_POST['return_modal']));
+  }
+  header('Location: '.$url);
+  exit;
 }
 
-function sendMessage($chat_id, $text, $keyboard = true) {
-    $data = [
-        "chat_id" => $chat_id,
-        "text" => $text,
-        "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
-    ];
-
-    if ($keyboard) {
-        $data["reply_markup"] = json_encode([
-            "keyboard" => [
-                [
-                    ["text" => "/planes"],
-                    ["text" => "/referidos"]
-                ],
-                [
-                    ["text" => "/micuenta"],
-                    ["text" => "/caducidad"]
-                ],
-                [
-                    ["text" => "/misreferidos"],
-                    ["text" => "/cambiarusuario"]
-                ],
-                [
-                    ["text" => "/queesreferidos"],
-                    ["text" => "/apps"]
-                ],
-                [
-                    ["text" => "/agenda"],
-                    ["text" => "/renovar"]
-                ],
-                [
-                    ["text" => "/pagar"],
-                    ["text" => "/soporte"]
-                ]
-            ],
-            "resize_keyboard" => true,
-            "one_time_keyboard" => false
-        ]);
-    }
-
-    return telegramRequest("sendMessage", $data);
+try{
+  $pdo = new PDO("mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_TIMEOUT=>10]);
+}catch(Throwable $e){ die("<body style='background:#050505;color:white;font-family:Arial;padding:20px'><div style='border:1px solid #ef4444;border-radius:20px;padding:20px;background:#111'><h2>Error MySQL</h2><p>".h($e->getMessage())."</p></div></body>"); }
+function hasCol($pdo,$table,$col){ try{$s=$pdo->prepare("SHOW COLUMNS FROM `$table` LIKE ?");$s->execute([$col]);return (bool)$s->fetch();}catch(Throwable $e){return false;} }
+$pdo->exec("CREATE TABLE IF NOT EXISTS clientes(id INT AUTO_INCREMENT PRIMARY KEY,nombre VARCHAR(150) NOT NULL,contacto VARCHAR(150) DEFAULT '',telefono VARCHAR(150) DEFAULT '',telegram VARCHAR(100) DEFAULT '',nota TEXT,fecha_alta TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$pdo->exec("CREATE TABLE IF NOT EXISTS referidos(id INT AUTO_INCREMENT PRIMARY KEY,cliente_id INT NOT NULL,nombre VARCHAR(150) NOT NULL,fecha_alta DATE NULL,fecha_caducidad DATE NULL,estado VARCHAR(20) DEFAULT 'Activo',nota TEXT,creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$pdo->exec("CREATE TABLE IF NOT EXISTS clientes_normales(id INT AUTO_INCREMENT PRIMARY KEY,nombre VARCHAR(150) NOT NULL,contacto VARCHAR(150) DEFAULT '',telefono VARCHAR(150) DEFAULT '',telegram VARCHAR(100) DEFAULT '',fecha_alta DATE NULL,fecha_caducidad DATE NULL,estado VARCHAR(20) DEFAULT 'Activo',nota TEXT,creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$pdo->exec("CREATE TABLE IF NOT EXISTS configuracion_niveles(id INT AUTO_INCREMENT PRIMARY KEY,nivel VARCHAR(50),min_activos INT,trimestral DECIMAL(10,2),semestral DECIMAL(10,2),anual DECIMAL(10,2)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+foreach(['contacto'=>"ALTER TABLE clientes ADD contacto VARCHAR(150) DEFAULT ''",'telefono'=>"ALTER TABLE clientes ADD telefono VARCHAR(150) DEFAULT ''",'telegram'=>"ALTER TABLE clientes ADD telegram VARCHAR(100) DEFAULT ''",'nota'=>"ALTER TABLE clientes ADD nota TEXT"] as $c=>$sql){ if(!hasCol($pdo,'clientes',$c)) $pdo->exec($sql); }
+foreach(['fecha_alta'=>"ALTER TABLE referidos ADD fecha_alta DATE NULL",'fecha_caducidad'=>"ALTER TABLE referidos ADD fecha_caducidad DATE NULL",'estado'=>"ALTER TABLE referidos ADD estado VARCHAR(20) DEFAULT 'Activo'",'nota'=>"ALTER TABLE referidos ADD nota TEXT"] as $c=>$sql){ if(!hasCol($pdo,'referidos',$c)) $pdo->exec($sql); }
+foreach(['contacto'=>"ALTER TABLE clientes_normales ADD contacto VARCHAR(150) DEFAULT ''",'telefono'=>"ALTER TABLE clientes_normales ADD telefono VARCHAR(150) DEFAULT ''",'telegram'=>"ALTER TABLE clientes_normales ADD telegram VARCHAR(100) DEFAULT ''",'fecha_alta'=>"ALTER TABLE clientes_normales ADD fecha_alta DATE NULL",'fecha_caducidad'=>"ALTER TABLE clientes_normales ADD fecha_caducidad DATE NULL",'estado'=>"ALTER TABLE clientes_normales ADD estado VARCHAR(20) DEFAULT 'Activo'",'nota'=>"ALTER TABLE clientes_normales ADD nota TEXT"] as $c=>$sql){ if(!hasCol($pdo,'clientes_normales',$c)) $pdo->exec($sql); }
+if((int)$pdo->query("SELECT COUNT(*) FROM configuracion_niveles")->fetchColumn()===0){$ins=$pdo->prepare("INSERT INTO configuracion_niveles(nivel,min_activos,trimestral,semestral,anual) VALUES(?,?,?,?,?)");foreach([['COBRE',4,30,45,65],['PLATA',8,27,40,58],['ORO',12,25,37,52],['PLATINUM',20,22,33,45]] as $r) $ins->execute($r);} 
+/* ===== PRECIOS REFERIDOS VIP ACTUALIZADOS ===== */
+$updNivel = $pdo->prepare("UPDATE configuracion_niveles SET min_activos=?, trimestral=?, semestral=?, anual=? WHERE UPPER(nivel)=?");
+foreach([['COBRE',4,30,45,65],['PLATA',8,27,40,58],['ORO',12,25,37,52],['PLATINUM',20,22,33,45]] as $r){
+  $updNivel->execute([$r[1],$r[2],$r[3],$r[4],$r[0]]);
 }
 
-function sendInlineMessage($chat_id, $text, $reply_markup = null) {
-    $data = [
-        "chat_id" => $chat_id,
-        "text" => $text,
-        "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
-    ];
-
-    if ($reply_markup) {
-        $data["reply_markup"] = json_encode($reply_markup);
-    }
-
-    return telegramRequest("sendMessage", $data);
-}
-
-function sendLongMessage($chat_id, $text, $keyboard = true) {
-    $max = 3900;
-
-    if (mb_strlen($text, "UTF-8") <= $max) {
-        sendMessage($chat_id, $text, $keyboard);
-        return;
-    }
-
-    $parts = preg_split("/\n(?=━━━━━━━━━━━━━━)/u", $text);
-    $chunk = "";
-
-    foreach ($parts as $part) {
-        if (mb_strlen($chunk."\n".$part, "UTF-8") > $max) {
-            sendMessage($chat_id, trim($chunk), $keyboard);
-            $chunk = $part;
-        } else {
-            $chunk .= "\n".$part;
-        }
-    }
-
-    if (trim($chunk) !== "") {
-        sendMessage($chat_id, trim($chunk), $keyboard);
-    }
-}
-
-function deleteMessage($chat_id, $message_id) {
-    telegramRequest("deleteMessage", [
-        "chat_id" => $chat_id,
-        "message_id" => $message_id
-    ]);
-}
-
-function forwardMessage($to_chat_id, $from_chat_id, $message_id) {
-    return telegramRequest("forwardMessage", [
-        "chat_id" => $to_chat_id,
-        "from_chat_id" => $from_chat_id,
-        "message_id" => $message_id,
-        "disable_notification" => false
-    ]);
-}
-
-function answerCallbackQuery($callback_query_id, $text = "") {
-    $data = [
-        "callback_query_id" => $callback_query_id
-    ];
-
-    if ($text !== "") {
-        $data["text"] = $text;
-    }
-
-    return telegramRequest("answerCallbackQuery", $data);
-}
-
-function editMessageText($chat_id, $message_id, $text, $reply_markup = null) {
-    $data = [
-        "chat_id" => $chat_id,
-        "message_id" => $message_id,
-        "text" => $text
-    ];
-
-    if ($reply_markup) {
-        $data["reply_markup"] = json_encode($reply_markup);
-    }
-
-    return telegramRequest("editMessageText", $data);
-}
-
-/* =========================
-   FUNCIONES STATES
-========================= */
-
-function loadStates($file) {
-    if (!file_exists($file)) {
-        return [];
-    }
-
-    $json = file_get_contents($file);
-    $data = json_decode($json, true);
-
-    return is_array($data) ? $data : [];
-}
-
-function saveStates($file, $states) {
-    file_put_contents($file, json_encode($states, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-}
-
-function getUserMode($states, $chat_id) {
-    if (!isset($states[$chat_id])) {
-        return "";
-    }
-
-    if (is_array($states[$chat_id])) {
-        return $states[$chat_id]["mode"] ?? "";
-    }
-
-    return $states[$chat_id];
-}
-
-function getSavedUsuario($states, $chat_id) {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        return "";
-    }
-
-    return trim($states[$chat_id]["usuario_mdprime"] ?? "");
-}
-
-function setUserMode($file, &$states, $chat_id, $mode, $pending = "") {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        $states[$chat_id] = [];
-    }
-
-    $states[$chat_id]["mode"] = $mode;
-
-    if ($pending !== "") {
-        $states[$chat_id]["pending_command"] = $pending;
-    }
-
-    saveStates($file, $states);
-}
-
-function clearUserMode($file, &$states, $chat_id) {
-    if (!isset($states[$chat_id])) {
-        return;
-    }
-
-    if (is_array($states[$chat_id])) {
-        unset($states[$chat_id]["mode"]);
-        unset($states[$chat_id]["pending_command"]);
-        unset($states[$chat_id]["renovar_data"]);
-
-        if (empty($states[$chat_id])) {
-            unset($states[$chat_id]);
-        }
-    } else {
-        unset($states[$chat_id]);
-    }
-
-    saveStates($file, $states);
-}
-
-function saveUsuarioMdprime($file, &$states, $chat_id, $usuario) {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        $states[$chat_id] = [];
-    }
-
-    $states[$chat_id]["usuario_mdprime"] = trim($usuario);
-    unset($states[$chat_id]["mode"]);
-    unset($states[$chat_id]["pending_command"]);
-
-    saveStates($file, $states);
-}
-
-/* =========================
-   API MDPRIME
-========================= */
-
-
-function getRailwayPdo() {
-    static $pdo = null;
-    global $db_host, $db_port, $db_name, $db_user, $db_pass;
-
-    if ($pdo instanceof PDO) {
-        return $pdo;
-    }
-
-    $pdo = new PDO(
-        "mysql:host=$db_host;port=$db_port;dbname=$db_name;charset=utf8mb4",
-        $db_user,
-        $db_pass,
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_TIMEOUT => 8,
-            PDO::ATTR_PERSISTENT => false
-        ]
-    );
-
-    return $pdo;
-}
-
-function optimizarIndicesRailway() {
-    try {
-        $pdo = getRailwayPdo();
-
-        $indices = [
-            "CREATE INDEX idx_clientes_nombre ON clientes(nombre)",
-            "CREATE INDEX idx_clientes_telegram ON clientes(telegram)",
-            "CREATE INDEX idx_clientes_contacto ON clientes(contacto)",
-            "CREATE INDEX idx_referidos_nombre ON referidos(nombre)",
-            "CREATE INDEX idx_referidos_cliente_id ON referidos(cliente_id)",
-            "CREATE INDEX idx_referidos_estado_caducidad ON referidos(estado, fecha_caducidad)"
-        ];
-
-        foreach ($indices as $sql) {
-            try {
-                $pdo->exec($sql);
-            } catch (Throwable $e) {
-                // Ignorar si ya existe
-            }
-        }
-
-        return true;
-    } catch (Throwable $e) {
-        return false;
-    }
-}
-
-function getAgendaJsonCache() {
-    global $agenda_cache_file;
-
-    $ttl = 300; // 5 minutos
-    $url = "https://agenda-mdprime.zeppplay7.workers.dev/json";
-
-    if (file_exists($agenda_cache_file) && (time() - filemtime($agenda_cache_file)) < $ttl) {
-        $cached = file_get_contents($agenda_cache_file);
-        if ($cached) {
-            return $cached;
-        }
-    }
-
-    $json = @file_get_contents($url);
-
-    if ($json) {
-        @file_put_contents($agenda_cache_file, $json);
-        return $json;
-    }
-
-    if (file_exists($agenda_cache_file)) {
-        return file_get_contents($agenda_cache_file);
-    }
-
-    return false;
-}
-
-
-
-function buscarReferidoFlexibleV24($pdo, $usuario) {
-    $usuario = trim((string)$usuario);
-
-    try {
-        $stmt = $pdo->prepare("
-            SELECT 
-                r.*,
-                c.id AS referente_id,
-                c.nombre AS referente_nombre,
-                c.telegram AS referente_telegram,
-                c.contacto AS referente_contacto
-            FROM referidos r
-            INNER JOIN clientes c ON c.id = r.cliente_id
-            WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
-               OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-            ORDER BY 
-                CASE 
-                    WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
-                    THEN 0 ELSE 1
-                END,
-                r.fecha_caducidad DESC,
-                r.id DESC
-            LIMIT 1
-        ");
-        $stmt->execute([$usuario, $usuario]);
-        $ref = $stmt->fetch();
-
-        return $ref ?: null;
-
-    } catch (Throwable $e) {
-        return null;
-    }
-}
-
-function buscarReferidoDirectoSinJoinV25($pdo, $usuario) {
-    $usuario = trim((string)$usuario);
-
-    try {
-        $stmt = $pdo->prepare("
-            SELECT *
-            FROM referidos
-            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        $stmt->execute([$usuario, $usuario]);
-        $ref = $stmt->fetch();
-
-        if (!$ref) {
-            return null;
-        }
-
-        $ref["referente_id"] = (int)($ref["cliente_id"] ?? 0);
-        $ref["referente_nombre"] = "No disponible";
-        $ref["referente_telegram"] = "";
-        $ref["referente_contacto"] = "";
-
-        if (!empty($ref["cliente_id"])) {
-            $st = $pdo->prepare("SELECT id,nombre,telegram,contacto FROM clientes WHERE id=? LIMIT 1");
-            $st->execute([(int)$ref["cliente_id"]]);
-            $cli = $st->fetch();
-
-            if ($cli) {
-                $ref["referente_id"] = (int)$cli["id"];
-                $ref["referente_nombre"] = $cli["nombre"] ?? "No disponible";
-                $ref["referente_telegram"] = $cli["telegram"] ?? "";
-                $ref["referente_contacto"] = $cli["contacto"] ?? "";
-            }
-        }
-
-        return $ref;
-
-    } catch (Throwable $e) {
-        return null;
-    }
-}
-
-function construirRespuestaReferido($referido) {
-    $caducidad = $referido["fecha_caducidad"] ?? null;
-    $estado_real = "Inactivo";
-
-    if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-        $estado_real = "Activo";
-    }
-
-    $dias = null;
-    if ($caducidad) {
-        $hoy = new DateTime(date("Y-m-d"));
-        $cad = new DateTime($caducidad);
-        $dias = (int)$hoy->diff($cad)->format("%r%a");
-    }
-
-    return [
-        "ok" => true,
-        "tipo" => "referido",
-        "referido" => [
-            "id" => (int)($referido["id"] ?? 0),
-            "nombre" => $referido["nombre"] ?? ($referido["nombre_match_v24"] ?? "Sin nombre"),
-            "estado" => $estado_real,
-            "fecha_alta" => (!empty($referido["fecha_alta"])) ? date("d/m/Y", strtotime($referido["fecha_alta"])) : "Sin fecha",
-            "caducidad" => ($caducidad) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
-            "dias" => $dias,
-            "nota" => $referido["nota"] ?? ""
-        ],
-        "referente" => [
-            "id" => (int)($referido["referente_id"] ?? 0),
-            "nombre" => $referido["referente_nombre"] ?? "",
-            "telegram" => $referido["referente_telegram"] ?? "",
-            "contacto" => $referido["referente_contacto"] ?? ""
-        ]
-    ];
-}
-
-
-function construirRespuestaClienteNormal($normal) {
-    $caducidad = $normal["fecha_caducidad"] ?? null;
-    $estado_real = "Inactivo";
-
-    if (($normal["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-        $estado_real = "Activo";
-    }
-
-    $dias = null;
-    if ($caducidad) {
-        $hoy = new DateTime(date("Y-m-d"));
-        $cad = new DateTime($caducidad);
-        $dias = (int)$hoy->diff($cad)->format("%r%a");
-    }
-
-    return [
-        "ok" => true,
-        "tipo" => "normal",
-        "cliente_normal" => [
-            "id" => (int)($normal["id"] ?? 0),
-            "nombre" => $normal["nombre"] ?? "Sin nombre",
-            "estado" => $estado_real,
-            "fecha_alta" => (!empty($normal["fecha_alta"])) ? date("d/m/Y", strtotime($normal["fecha_alta"])) : "Sin fecha",
-            "caducidad" => ($caducidad) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
-            "dias" => $dias,
-            "telegram" => $normal["telegram"] ?? "",
-            "contacto" => $normal["contacto"] ?? ($normal["telefono"] ?? ""),
-            "nota" => $normal["nota"] ?? ""
-        ]
-    ];
-}
-
-function consultarClienteApi($usuario) {
-    global $db_host, $db_port, $db_name, $db_user, $db_pass;
-
-    $usuario = trim((string)$usuario);
-    $usuario = str_replace(["\r", "\n", "\t"], " ", $usuario);
-    $usuario = preg_replace('/\s+/', ' ', $usuario);
-
-    if ($usuario === "") {
-        return ["ok" => false, "error" => "Falta usuario"];
-    }
-
-    $usuario_sin_arroba = ltrim($usuario, "@");
-    $usuario_like = "%".$usuario."%";
-
-    try {
-        $pdo = getRailwayPdo();
-
-        // Primero búsqueda exacta rápida usando índices
-        $stmt = $pdo->prepare("
-            SELECT *
-            FROM clientes
-            WHERE nombre = ?
-               OR telegram = ?
-               OR telegram = ?
-               OR contacto = ?
-               OR telefono = ?
-            LIMIT 1
-        ");
-        $stmt->execute([$usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario]);
-        $cliente = $stmt->fetch();
-
-        // Si no hay coincidencia exacta, usar búsqueda flexible
-        if (!$cliente) {
-            $stmt = $pdo->prepare("
-                SELECT *
-                FROM clientes
-                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(contacto)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(telefono)) = LOWER(TRIM(?))
-                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                   OR REPLACE(LOWER(TRIM(telegram)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                LIMIT 1
-            ");
-            $stmt->execute([$usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario, $usuario, $usuario_sin_arroba]);
-            $cliente = $stmt->fetch();
-        }
-
-        if ($cliente) {
-            $cliente_id = (int)$cliente["id"];
-
-            $stmt = $pdo->prepare("
-                SELECT *
-                FROM referidos
-                WHERE cliente_id = ?
-                ORDER BY 
-                    CASE 
-                        WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE()) 
-                        THEN 0 ELSE 1 
-                    END,
-                    fecha_caducidad ASC,
-                    nombre ASC
-            ");
-            $stmt->execute([$cliente_id]);
-            $referidos_db = $stmt->fetchAll();
-
-            $referidos_lista = [];
-            $total = count($referidos_db);
-            $activos = 0;
-            $inactivos = 0;
-            $proxima_caducidad = null;
-
-            foreach ($referidos_db as $ref) {
-                $caducidad = $ref["fecha_caducidad"] ?? null;
-                $estado_real = "Inactivo";
-
-                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad  || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-                    $estado_real = "Activo";
-                    $activos++;
-
-                    if ($caducidad  && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
-                        $proxima_caducidad = $caducidad;
-                    }
-                } else {
-                    $inactivos++;
-                }
-
-                $dias = null;
-                if ($caducidad ) {
-                    $hoy = new DateTime(date("Y-m-d"));
-                    $cad = new DateTime($caducidad);
-                    $dias = (int)$hoy->diff($cad)->format("%r%a");
-                }
-
-                $referidos_lista[] = [
-                    "id" => (int)$ref["id"],
-                    "nombre" => $ref["nombre"],
-                    "estado" => $estado_real,
-                    "fecha_alta" => (!empty($ref["fecha_alta"]) ) ? date("d/m/Y", strtotime($ref["fecha_alta"])) : "Sin fecha",
-                    "caducidad" => ($caducidad ) ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
-                    "dias" => $dias,
-                    "nota" => $ref["nota"] ?? ""
-                ];
-            }
-
-            $niveles = $pdo->query("SELECT * FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
-
-            $nivel_actual = [
-                "nivel" => "SIN NIVEL",
-                "min_activos" => 0,
-                "trimestral" => 0,
-                "semestral" => 0,
-                "anual" => 0
-            ];
-
-            $siguiente = null;
-
-            foreach ($niveles as $nivel) {
-                if ($activos >= (int)$nivel["min_activos"]) {
-                    $nivel_actual = $nivel;
-                } elseif (!$siguiente) {
-                    $siguiente = $nivel;
-                }
-            }
-
-            $dias_proxima = null;
-            if ($proxima_caducidad) {
-                $hoy = new DateTime(date("Y-m-d"));
-                $cad = new DateTime($proxima_caducidad);
-                $dias_proxima = (int)$hoy->diff($cad)->format("%r%a");
-            }
-
-            return [
-                "ok" => true,
-                "tipo" => "referente",
-                "cliente" => [
-                    "id" => $cliente_id,
-                    "nombre" => $cliente["nombre"],
-                    "contacto" => $cliente["contacto"] ?? "",
-                    "telegram" => $cliente["telegram"] ?? ""
-                ],
-                "resumen" => [
-                    "total_referidos" => $total,
-                    "activos" => $activos,
-                    "inactivos" => $inactivos,
-                    "proxima_caducidad" => $proxima_caducidad ? date("d/m/Y", strtotime($proxima_caducidad)) : "Sin fecha",
-                    "dias_proxima_caducidad" => $dias_proxima
-                ],
-                "nivel" => [
-                    "actual" => $nivel_actual["nivel"],
-                    "precio_3_meses" => (float)$nivel_actual["trimestral"],
-                    "precio_6_meses" => (float)$nivel_actual["semestral"],
-                    "precio_12_meses" => (float)$nivel_actual["anual"]
-                ],
-                "siguiente_nivel" => $siguiente ? [
-                    "nivel" => $siguiente["nivel"],
-                    "min_activos" => (int)$siguiente["min_activos"],
-                    "faltan" => max(0, (int)$siguiente["min_activos"] - $activos)
-                ] : null,
-                "referidos" => $referidos_lista
-            ];
-        }
-
-        // Búsqueda exacta rápida de referido
-        $stmt = $pdo->prepare("
-            SELECT 
-                r.*,
-                c.id AS referente_id,
-                c.nombre AS referente_nombre,
-                c.telegram AS referente_telegram,
-                c.contacto AS referente_contacto
-            FROM referidos r
-            INNER JOIN clientes c ON c.id = r.cliente_id
-            WHERE r.nombre = ?
-            ORDER BY 
-                CASE 
-                    WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
-                    THEN 0 ELSE 1
-                END,
-                r.fecha_caducidad DESC,
-                r.id DESC
-            LIMIT 1
-        ");
-        $stmt->execute([$usuario]);
-        $referido = $stmt->fetch();
-
-        // Si no hay coincidencia exacta, usar búsqueda flexible
-        if (!$referido) {
-            $stmt = $pdo->prepare("
-                SELECT 
-                    r.*,
-                    c.id AS referente_id,
-                    c.nombre AS referente_nombre,
-                    c.telegram AS referente_telegram,
-                    c.contacto AS referente_contacto
-                FROM referidos r
-                INNER JOIN clientes c ON c.id = r.cliente_id
-                WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
-                   OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                ORDER BY 
-                    CASE 
-                        WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())
-                        THEN 0 ELSE 1
-                    END,
-                    r.fecha_caducidad DESC,
-                    r.id DESC
-                LIMIT 1
-            ");
-            $stmt->execute([$usuario, $usuario]);
-            $referido = $stmt->fetch();
-        }
-
-        if ($referido) {
-            // Seguridad V30: si hay más de un referido con el mismo nombre exacto normalizado, no se autoguarda.
-            $chkDup = $pdo->prepare("
-                SELECT COUNT(*)
-                FROM referidos
-                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-            ");
-            $chkDup->execute([$usuario, $usuario]);
-            $numDup = (int)$chkDup->fetchColumn();
-
-            if ($numDup > 1) {
-                return [
-                    "ok" => false,
-                    "error" => "Hay varios usuarios parecidos con ese nombre. Por seguridad, escribe el usuario exacto completo tal como aparece en el panel.",
-                    "buscado" => $usuario
-                ];
-            }
-
-            return construirRespuestaReferido($referido);
-        }
-
-        // Fallback V24: búsqueda robusta por todas las columnas de texto de referidos.
-        // Esto corrige referidos creados por el panel que puedan quedar guardados con otro formato/campo.
-        $referido_flexible = buscarReferidoFlexibleV24($pdo, $usuario);
-
-        if ($referido_flexible) {
-            return construirRespuestaReferido($referido_flexible);
-        }
-
-        // Fallback V25: búsqueda directa en referidos sin INNER JOIN.
-        // Sirve para detectar registros creados aunque la relación cliente_id tenga algún problema.
-        $referido_directo = buscarReferidoDirectoSinJoinV25($pdo, $usuario);
-
-        if ($referido_directo) {
-            return construirRespuestaReferido($referido_directo);
-        }
-
-        // V35: Buscar también en clientes normales.
-        try {
-            $stmt = $pdo->prepare("
-                SELECT *
-                FROM clientes_normales
-                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                   OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(telegram)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(contacto)) = LOWER(TRIM(?))
-                   OR LOWER(TRIM(telefono)) = LOWER(TRIM(?))
-                ORDER BY 
-                    CASE 
-                        WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE())
-                        THEN 0 ELSE 1 
-                    END,
-                    fecha_caducidad DESC,
-                    id DESC
-                LIMIT 1
-            ");
-            $stmt->execute([$usuario, $usuario, $usuario, $usuario_sin_arroba, $usuario, $usuario]);
-            $cliente_normal = $stmt->fetch();
-
-            if ($cliente_normal) {
-                return construirRespuestaClienteNormal($cliente_normal);
-            }
-        } catch (Throwable $e) {
-            // Si la tabla todavía no existe, no rompemos el bot.
-        }
-
-        return [
-            "ok" => false,
-            "error" => "Cliente o referido no encontrado",
-            "buscado" => $usuario
-        ];
-
-    } catch (Throwable $e) {
-        return [
-            "ok" => false,
-            "error" => "Error MySQL directo",
-            "detalle" => $e->getMessage()
-        ];
-    }
-}
-
-function fmtDias($dias) {
-    if ($dias === null || $dias === "") {
-        return "Sin calcular";
-    }
-
-    $dias = (int)$dias;
-
-    if ($dias > 0) {
-        return $dias." días";
-    }
-
-    if ($dias === 0) {
-        return "Caduca hoy";
-    }
-
-    return "Caducado hace ".abs($dias)." días";
-}
-
-function estadoIcono($estado) {
-    return strtolower($estado) === "activo" ? "🟢" : "🔴";
-}
-
-function nivelIcono($nivel) {
-    $nivel = strtoupper((string)$nivel);
-
-    if ($nivel === "COBRE") return "🛡️";
-    if ($nivel === "PLATA") return "⚜️";
-    if ($nivel === "ORO") return "🏆";
-    if ($nivel === "PLATINUM") return "💎";
-
-    return "🔒";
-}
-
-
-function textoPreciosNivelReferidos($nivel_key) {
-    $nivel_key = strtolower((string)$nivel_key);
-
-    if ($nivel_key === "") {
-        return "";
-    }
-
-    return "🏆 Paquete Referidos:
-".renovarNivelTxt($nivel_key)."
-
-💶 Precios de tu paquete:
-3 meses → ".renovarPrecioReferidos($nivel_key, 3)."€
-6 meses → ".renovarPrecioReferidos($nivel_key, 6)."€
-12 meses → ".renovarPrecioReferidos($nivel_key, 12)."€";
-}
-
-function formatMiCuenta($data) {
-    if (empty($data["ok"])) {
-        return "❌ ".$data["error"];
-    }
-
-    $tipo = $data["tipo"] ?? "";
-
-    if ($tipo === "referido" || isset($data["referido"])) {
-        $ref = $data["referido"] ?? [];
-        $referente = $data["referente"] ?? [];
-
-        $estado = $ref["estado"] ?? "Sin estado";
-        $caducidad = $ref["caducidad"] ?? ($ref["fecha_caducidad"] ?? "Sin fecha");
-        $alta = $ref["fecha_alta"] ?? "Sin fecha";
-        $dias = $ref["dias"] ?? null;
-
-        $paquete_txt = "";
-        $referente_id = $referente["id"] ?? 0;
-
-        if ($referente_id) {
-            $info_nivel = obtenerNivelReferentePorId($referente_id);
-            $nivel_key = $info_nivel["nivel"] ?? "";
-            $paquete_txt = textoPreciosNivelReferidos($nivel_key);
-        }
-
-        return "👤 MI CUENTA MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-🙋 Usuario:
-".($ref["nombre"] ?? "Sin nombre")."
-
-👥 Referente:
-".($referente["nombre"] ?? "Sin referente")."
-
-".estadoIcono($estado)." Estado:
-".$estado."
-
-📅 Alta:
-".$alta."
-
-📅 Caducidad:
-".$caducidad."
-
-⏳ Tiempo restante:
-".fmtDias($dias).($paquete_txt !== "" ? "
-
-━━━━━━━━━━━━━━━━━━
-
-".$paquete_txt : "")."
-
-━━━━━━━━━━━━━━━━━━
-
-⭐ Gracias por confiar en MDPRIME.";
-    }
-
-    if ($tipo === "normal" || isset($data["cliente_normal"])) {
-        $normal = $data["cliente_normal"] ?? [];
-
-        $estado = $normal["estado"] ?? "Sin estado";
-        $caducidad = $normal["caducidad"] ?? "Sin fecha";
-        $alta = $normal["fecha_alta"] ?? "Sin fecha";
-        $dias = $normal["dias"] ?? null;
-
-        return "👤 MI CUENTA MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-🙋 Usuario:
-".($normal["nombre"] ?? "Sin nombre")."
-
-💳 Tipo de cuenta:
-Cliente normal
-
-".estadoIcono($estado)." Estado:
-".$estado."
-
-📅 Alta:
-".$alta."
-
-📅 Caducidad:
-".$caducidad."
-
-⏳ Tiempo restante:
-".fmtDias($dias)."
-
-━━━━━━━━━━━━━━━━━━
-
-💶 Precios normales:
-3 meses → ".renovarPrecioNormal(3)."€
-6 meses → ".renovarPrecioNormal(6)."€
-12 meses → ".renovarPrecioNormal(12)."€
-
-━━━━━━━━━━━━━━━━━━
-
-⭐ Gracias por confiar en MDPRIME.";
-    }
-
-    $cliente = $data["cliente"] ?? [];
-    $resumen = $data["resumen"] ?? [];
-    $nivel = $data["nivel"] ?? [];
-    $siguiente = $data["siguiente_nivel"] ?? null;
-
-    $nivelNombre = $nivel["actual"] ?? "SIN NIVEL";
-
-    $msg = "👤 MI CUENTA MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-🙋 Referente:
-".($cliente["nombre"] ?? "Sin nombre")."
-
-📲 Telegram:
-".(($cliente["telegram"] ?? "") !== "" ? "@".$cliente["telegram"] : "Sin Telegram")."
-
-".nivelIcono($nivelNombre)." Nivel:
-".$nivelNombre."
-
-👥 Referidos totales:
-".($resumen["total_referidos"] ?? 0)."
-
-🟢 Activos:
-".($resumen["activos"] ?? 0)."
-
-🔴 Inactivos:
-".($resumen["inactivos"] ?? 0)."
-
-📅 Próxima caducidad:
-".($resumen["proxima_caducidad"] ?? "Sin fecha")."
-
-⏳ Tiempo restante:
-".fmtDias($resumen["dias_proxima_caducidad"] ?? null)."
-
-━━━━━━━━━━━━━━━━━━
-
-💶 TUS TARIFAS
-
-3 meses → ".($nivel["precio_3_meses"] ?? 0)."€
-6 meses → ".($nivel["precio_6_meses"] ?? 0)."€
-12 meses → ".($nivel["precio_12_meses"] ?? 0)."€";
-
-    if ($siguiente) {
-        $msg .= "
-
-━━━━━━━━━━━━━━━━━━
-
-🎯 Próximo nivel:
-".nivelIcono($siguiente["nivel"] ?? "")." ".($siguiente["nivel"] ?? "")."
-
-Te faltan:
-".($siguiente["faltan"] ?? 0)." referidos";
-    } else {
-        $msg .= "
-
-━━━━━━━━━━━━━━━━━━
-
-💎 Ya estás en el nivel máximo.";
-    }
-
-    return $msg;
-}
-
-function formatCaducidad($data) {
-    if (empty($data["ok"])) {
-        return "❌ ".$data["error"];
-    }
-
-    $tipo = $data["tipo"] ?? "";
-
-    if ($tipo === "referido" || isset($data["referido"])) {
-        $ref = $data["referido"] ?? [];
-        $estado = $ref["estado"] ?? "Sin estado";
-
-        return "📅 CADUCIDAD MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".($ref["nombre"] ?? "Sin nombre")."
-
-".estadoIcono($estado)." Estado:
-".$estado."
-
-📅 Caduca:
-".($ref["caducidad"] ?? "Sin fecha")."
-
-⏳ Tiempo restante:
-".fmtDias($ref["dias"] ?? null);
-    }
-
-    $cliente = $data["cliente"] ?? [];
-    $resumen = $data["resumen"] ?? [];
-
-    return "📅 CADUCIDAD REFERIDOS
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Referente:
-".($cliente["nombre"] ?? "Sin nombre")."
-
-👥 Referidos activos:
-".($resumen["activos"] ?? 0)."
-
-📅 Próxima caducidad:
-".($resumen["proxima_caducidad"] ?? "Sin fecha")."
-
-⏳ Tiempo restante:
-".fmtDias($resumen["dias_proxima_caducidad"] ?? null);
-}
-
-function formatMisReferidos($data) {
-    if (empty($data["ok"])) {
-        return "❌ ".$data["error"];
-    }
-
-    $tipo = $data["tipo"] ?? "";
-
-    if ($tipo === "referido" || isset($data["referido"])) {
-        return formatMiCuenta($data);
-    }
-
-    $cliente = $data["cliente"] ?? [];
-    $resumen = $data["resumen"] ?? [];
-    $referidos = $data["referidos"] ?? [];
-
-    $msg = "👥 MIS REFERIDOS MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-🙋 Referente:
-".($cliente["nombre"] ?? "Sin nombre")."
-
-👥 Total:
-".($resumen["total_referidos"] ?? count($referidos))."
-
-🟢 Activos:
-".($resumen["activos"] ?? 0)."
-
-🔴 Inactivos:
-".($resumen["inactivos"] ?? 0)."
-
-━━━━━━━━━━━━━━━━━━";
-
-    if (empty($referidos)) {
-        $msg .= "
-
-No tienes referidos registrados.";
-        return $msg;
-    }
-
-    foreach ($referidos as $i => $ref) {
-        $estado = $ref["estado"] ?? "Sin estado";
-
-        $msg .= "
-
-━━━━━━━━━━━━━━
-#".($i + 1)." ".estadoIcono($estado)." ".($ref["nombre"] ?? "Sin nombre")."
-
-📌 Estado: ".$estado."
-📅 Alta: ".($ref["fecha_alta"] ?? "Sin fecha")."
-📅 Caduca: ".($ref["caducidad"] ?? "Sin fecha")."
-⏳ ".fmtDias($ref["dias"] ?? null);
-
-        if (!empty($ref["nota"])) {
-            $msg .= "
-📝 ".$ref["nota"];
-        }
-    }
-
-    return $msg;
-}
-
-function procesarCuenta($chat_id, $usuario, $tipo = "/micuenta") {
-    $data = consultarClienteApi($usuario);
-
-    if (empty($data["ok"])) {
-        $detalle_error = $data["error"] ?? "Sin detalle";
-        $buscado_api = $data["buscado"] ?? $usuario;
-
-        sendMessage($chat_id, "❌ No he encontrado ese usuario.
-
-Buscado:
-".$buscado_api."
-
-Detalle:
-".$detalle_error."
-
-Prueba directo así:
-/caducidad Brandon10
-
-O cambia el usuario con:
-/cambiarusuario");
-        return;
-    }
-
-    if ($tipo === "/caducidad") {
-        sendLongMessage($chat_id, formatCaducidad($data));
-        return;
-    }
-
-    if ($tipo === "/misreferidos") {
-        sendLongMessage($chat_id, formatMisReferidos($data));
-        return;
-    }
-
-    sendLongMessage($chat_id, formatMiCuenta($data));
-}
-
-
-function obtenerNivelReferentePorId($referente_id) {
-    try {
-        $pdo = getRailwayPdo();
-
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) 
-            FROM referidos 
-            WHERE cliente_id = ?
-              AND estado = 'Activo'
-              AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE())
-        ");
-        $stmt->execute([(int)$referente_id]);
-        $activos = (int)$stmt->fetchColumn();
-
-        $niveles = $pdo->query("SELECT * FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
-
-        $nivel_actual = "";
-
-        foreach ($niveles as $nivel) {
-            if ($activos >= (int)$nivel["min_activos"]) {
-                $nivel_actual = renovarNivelKeyDesdeTexto($nivel["nivel"] ?? "");
-            }
-        }
-
-        return [
-            "nivel" => $nivel_actual,
-            "activos" => $activos
-        ];
-
-    } catch (Throwable $e) {
-        return [
-            "nivel" => "",
-            "activos" => 0
-        ];
-    }
-}
-
-function renovarPrecioNormal($meses) {
-    $precios = [
-        3 => 35,
-        6 => 55,
-        12 => 80
-    ];
-
-    return $precios[(int)$meses] ?? 0;
-}
-
-function renovarPrecioReferidos($nivel, $meses) {
-    $nivel = strtolower((string)$nivel);
-
-    $precios = [
-        "cobre" => [3 => 30, 6 => 45, 12 => 65],
-        "plata" => [3 => 27, 6 => 40, 12 => 58],
-        "oro" => [3 => 25, 6 => 37, 12 => 52],
-        "platinum" => [3 => 22, 6 => 33, 12 => 45]
-    ];
-
-    return $precios[$nivel][(int)$meses] ?? 0;
-}
-
-function renovarNivelTxt($nivel) {
-    $nivel = strtolower((string)$nivel);
-
-    if ($nivel === "cobre") return "🥉 Cobre";
-    if ($nivel === "plata") return "🥈 Plata";
-    if ($nivel === "oro") return "🥇 Oro";
-    if ($nivel === "platinum") return "💠 Platinum";
-
-    return "Sin nivel";
-}
-
-function renovarDuracionKeyboard($data = []) {
-    $esVip = !empty($data["es_vip"]);
-    $nivel = $data["nivel_actual"] ?? "";
-
-    if ($esVip && $nivel !== "") {
-        $p3 = renovarPrecioReferidos($nivel, 3);
-        $p6 = renovarPrecioReferidos($nivel, 6);
-        $p12 = renovarPrecioReferidos($nivel, 12);
-    } else {
-        $p3 = renovarPrecioNormal(3);
-        $p6 = renovarPrecioNormal(6);
-        $p12 = renovarPrecioNormal(12);
-    }
-
-    return [
-        "inline_keyboard" => [
-            [
-                ["text" => "📦 3 meses · ".$p3."€", "callback_data" => "ren_dur_3"]
-            ],
-            [
-                ["text" => "📦 6 meses · ".$p6."€", "callback_data" => "ren_dur_6"]
-            ],
-            [
-                ["text" => "📦 12 meses · ".$p12."€", "callback_data" => "ren_dur_12"]
-            ],
-            [
-                ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
-            ]
-        ]
-    ];
-}
-
-function renovarOrdenNivel($nivel) {
-    $nivel = strtolower((string)$nivel);
-
-    if ($nivel === "cobre") return 1;
-    if ($nivel === "plata") return 2;
-    if ($nivel === "oro") return 3;
-    if ($nivel === "platinum") return 4;
-
-    return 0;
-}
-
-function renovarNivelKeyDesdeTexto($nivel) {
-    $nivel = strtoupper(trim((string)$nivel));
-
-    if ($nivel === "COBRE") return "cobre";
-    if ($nivel === "PLATA") return "plata";
-    if ($nivel === "ORO") return "oro";
-    if ($nivel === "PLATINUM") return "platinum";
-
-    return "";
-}
-
-function renovarNivelesPermitidos($nivel_actual) {
-    $actual = renovarOrdenNivel($nivel_actual);
-
-    $niveles = [
-        "cobre" => "🥉 Cobre",
-        "plata" => "🥈 Plata",
-        "oro" => "🥇 Oro",
-        "platinum" => "💠 Platinum"
-    ];
-
-    $permitidos = [];
-
-    foreach ($niveles as $key => $txt) {
-        if (renovarOrdenNivel($key) <= $actual) {
-            $permitidos[$key] = $txt;
-        }
-    }
-
-    return $permitidos;
-}
-
-function renovarNivelKeyboard($nivel_actual = "") {
-    $permitidos = renovarNivelesPermitidos($nivel_actual);
-
-    if (empty($permitidos)) {
-        $permitidos = ["cobre" => "🥉 Cobre"];
-    }
-
-    $rows = [];
-    $row = [];
-
-    foreach ($permitidos as $key => $txt) {
-        $row[] = ["text" => $txt, "callback_data" => "ren_lvl_".$key];
-
-        if (count($row) === 2) {
-            $rows[] = $row;
-            $row = [];
-        }
-    }
-
-    if (!empty($row)) {
-        $rows[] = $row;
-    }
-
-    $rows[] = [
-        ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
-    ];
-
-    return [
-        "inline_keyboard" => $rows
-    ];
-}
-
-function renovarConfirmarKeyboard() {
-    return [
-        "inline_keyboard" => [
-            [
-                ["text" => "✅ Solicitar renovación", "callback_data" => "ren_confirmar"]
-            ],
-            [
-                ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
-            ]
-        ]
-    ];
-}
-
-function renovarEstado($states, $chat_id) {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        return [];
-    }
-
-    return $states[$chat_id]["renovar_data"] ?? [];
-}
-
-function guardarRenovarEstado($file, &$states, $chat_id, $data) {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        $states[$chat_id] = [];
-    }
-
-    $states[$chat_id]["mode"] = "renovar_opciones";
-    $states[$chat_id]["renovar_data"] = $data;
-
-    saveStates($file, $states);
-}
-
-function limpiarRenovarEstado($file, &$states, $chat_id) {
-    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
-        unset($states[$chat_id]["mode"]);
-        unset($states[$chat_id]["pending_command"]);
-        unset($states[$chat_id]["renovar_data"]);
-
-        if (empty($states[$chat_id])) {
-            unset($states[$chat_id]);
-        }
-
-        saveStates($file, $states);
-    }
-}
-
-function renovarResumenTexto($data) {
-    $usuario = $data["usuario"] ?? "Sin usuario";
-    $meses = (int)($data["meses"] ?? 0);
-    $esVip = !empty($data["es_vip"]);
-    $caduca = $data["caduca"] ?? "No encontrada";
-    $dias = $data["dias"] ?? "No disponible";
-
-    if ($esVip) {
-        $nivel = $data["nivel"] ?? "";
-        $precio = renovarPrecioReferidos($nivel, $meses);
-
-        return "📋 RESUMEN DE RENOVACIÓN
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".$usuario."
-
-👥 Referente:
-".(($data["referente_nombre"] ?? "") !== "" ? $data["referente_nombre"] : "No disponible")."
-
-📅 Caduca:
-".$caduca."
-
-⏳ Tiempo restante:
-".$dias."
-
-📦 Duración:
-".$meses." meses
-
-🏆 Tarifa:
-Referidos VIP
-
-".renovarNivelTxt($nivel)."
-
-💶 Precio:
-".$precio."€
-
-━━━━━━━━━━━━━━━━━━
-
-¿Deseas enviar la solicitud?";
-    }
-
-    $precio = renovarPrecioNormal($meses);
-
-    return "📋 RESUMEN DE RENOVACIÓN
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".$usuario."
-
-ℹ️ Tipo:
-Tarifa estándar
-
-📦 Duración:
-".$meses." meses
-
-💶 Precio:
-".$precio."€
-
-━━━━━━━━━━━━━━━━━━
-
-¿Deseas enviar la solicitud?";
-}
-
-
-function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_mdprime) {
-    $usuario_mdprime = trim($usuario_mdprime);
-    $datos = consultarClienteApi($usuario_mdprime);
-
-    $caduca = "No encontrada";
-    $dias = "No disponible";
-    $nombre_encontrado = $usuario_mdprime;
-    $nivel_actual = "";
-    $referente_nombre = "";
-
-    if (!empty($datos["ok"]) && !empty($datos["cliente"])) {
-        $nombre_encontrado = $datos["cliente"]["nombre"] ?? $usuario_mdprime;
-        $caduca = $datos["resumen"]["proxima_caducidad"] ?? "Sin fecha";
-        $dias = fmtDias($datos["resumen"]["dias_proxima_caducidad"] ?? null);
-        $nivel_actual = renovarNivelKeyDesdeTexto($datos["nivel"]["actual"] ?? "");
-        $referente_nombre = $nombre_encontrado;
-    } elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
-        $nombre_encontrado = $datos["referido"]["nombre"] ?? $usuario_mdprime;
-        $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
-        $dias = fmtDias($datos["referido"]["dias"] ?? null);
-
-        $referente_nombre = $datos["referente"]["nombre"] ?? "";
-        $referente_id = $datos["referente"]["id"] ?? 0;
-
-        if ($referente_id) {
-            $info_nivel = obtenerNivelReferentePorId($referente_id);
-            $nivel_actual = $info_nivel["nivel"] ?? "";
-        }
-    } elseif (!empty($datos["ok"]) && !empty($datos["cliente_normal"])) {
-        $nombre_encontrado = $datos["cliente_normal"]["nombre"] ?? $usuario_mdprime;
-        $caduca = $datos["cliente_normal"]["caducidad"] ?? "Sin fecha";
-        $dias = fmtDias($datos["cliente_normal"]["dias"] ?? null);
-        $referente_nombre = "Cliente normal";
-        $nivel_actual = "";
-    }
-
-    $es_vip = ($nivel_actual !== "");
-
-    $ren_data = [
-        "usuario" => $usuario_mdprime,
-        "usuario_encontrado" => $nombre_encontrado,
-        "referente_nombre" => $referente_nombre,
-        "es_vip" => $es_vip,
-        "es_normal" => (!empty($datos["ok"]) && !empty($datos["cliente_normal"])),
-        "nivel_actual" => $nivel_actual,
-        "caduca" => $caduca,
-        "dias" => $dias
-    ];
-
-    guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
-
-    if ($es_vip) {
-        $msg = "✅ Usuario encontrado
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".$nombre_encontrado."
-
-👥 Referente:
-".($referente_nombre !== "" ? $referente_nombre : "No disponible")."
-
-📅 Caduca:
-".$caduca."
-
-⏳ Tiempo restante:
-".$dias."
-
-━━━━━━━━━━━━━━━━━━
-
-🏆 Nivel disponible:
-".renovarNivelTxt($nivel_actual)."
-
-💶 Precios disponibles:
-3 meses → ".renovarPrecioReferidos($nivel_actual, 3)."€
-6 meses → ".renovarPrecioReferidos($nivel_actual, 6)."€
-12 meses → ".renovarPrecioReferidos($nivel_actual, 12)."€
-
-━━━━━━━━━━━━━━━━━━
-
-Selecciona la duración de tu renovación:";
-    } else {
-        $msg = "ℹ️ USUARIO NO REFERIDO
-
-No aparece como Referido VIP en la base de datos.
-
-❌ No tiene beneficios de referidos.
-✅ Puede contratar con precio normal.
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario escrito:
-".$usuario_mdprime."
-
-💶 Precios normales:
-3 meses → ".renovarPrecioNormal(3)."€
-6 meses → ".renovarPrecioNormal(6)."€
-12 meses → ".renovarPrecioNormal(12)."€
-
-━━━━━━━━━━━━━━━━━━
-
-Selecciona la duración que quieres contratar:";
-    }
-
-    sendInlineMessage($chat_id, $msg, renovarDuracionKeyboard($ren_data));
-}
-
-function enviarRenovacionAdmin($admin_id, $chat_id, $update_from, $data) {
-    $usuario = $data["usuario"] ?? "Sin usuario";
-    $meses = (int)($data["meses"] ?? 0);
-    $esVip = !empty($data["es_vip"]);
-    $nivel = $data["nivel"] ?? "";
-    $caduca = $data["caduca"] ?? "No encontrada";
-    $dias = $data["dias"] ?? "No disponible";
-
-    $nombre = trim(
-        ($update_from["first_name"] ?? "") . " " .
-        ($update_from["last_name"] ?? "")
-    );
-
-    $usernameTelegram = $update_from["username"] ?? "";
-
-    if ($esVip) {
-        $precio = renovarPrecioReferidos($nivel, $meses);
-        $tipo = "Referidos VIP";
-        $nivelTxt = renovarNivelTxt($nivel);
-    } else {
-        $precio = renovarPrecioNormal($meses);
-        $tipo = "Tarifa estándar";
-        $nivelTxt = "No aplica";
-    }
-
-    $admin_msg = "🔄 NUEVA SOLICITUD DE RENOVACIÓN
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario MDPRIME:
-".$usuario."
-
-👥 Referente:
-".(($data["referente_nombre"] ?? "") !== "" ? $data["referente_nombre"] : "No disponible")."
-
-👤 Nombre Telegram:
-".$nombre."
-
-📱 Usuario Telegram:
-".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
-
-🆔 Chat ID:
-".$chat_id."
-
-📦 Duración:
-".$meses." meses
-
-💳 Tipo:
-".$tipo."
-
-🏆 Nivel:
-".$nivelTxt."
-
-💶 Precio:
-".$precio."€
-
-📅 Caduca:
-".$caduca."
-
-⏳ Tiempo restante:
-".$dias."
-
-🕒 Fecha:
-".date("d/m/Y H:i")."
-
-━━━━━━━━━━━━━━━━━━
-
-💬 Responder:
-
-/reply ".$chat_id." Hola ".$usuario.", hemos recibido tu solicitud de renovación.";
-
-    sendMessage($admin_id, $admin_msg, false);
-}
-
-
-function guardarComprobanteRenovacionEstado($file, &$states, $chat_id, $data) {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        $states[$chat_id] = [];
-    }
-
-    $states[$chat_id]["mode"] = "esperando_comprobante_renovacion";
-    $states[$chat_id]["comprobante_renovacion"] = $data;
-
-    saveStates($file, $states);
-}
-
-function obtenerComprobanteRenovacionEstado($states, $chat_id) {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-        return [];
-    }
-
-    return $states[$chat_id]["comprobante_renovacion"] ?? [];
-}
-
-function limpiarComprobanteRenovacionEstado($file, &$states, $chat_id) {
-    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
-        unset($states[$chat_id]["mode"]);
-        unset($states[$chat_id]["pending_command"]);
-        unset($states[$chat_id]["comprobante_renovacion"]);
-        unset($states[$chat_id]["renovar_data"]);
-
-        if (empty($states[$chat_id])) {
-            unset($states[$chat_id]);
-        }
-
-        saveStates($file, $states);
-    }
-}
-
-function guardarRenovacionPendienteAdmin($file, &$states, $ren_id, $data) {
-    if (!isset($states["_renovaciones_pendientes"]) || !is_array($states["_renovaciones_pendientes"])) {
-        $states["_renovaciones_pendientes"] = [];
-    }
-
-    $data["ren_id"] = $ren_id;
-    $data["creado_en"] = date("Y-m-d H:i:s");
-    $states["_renovaciones_pendientes"][$ren_id] = $data;
-
-    saveStates($file, $states);
-}
-
-function obtenerRenovacionPendienteAdmin($states, $ren_id) {
-    return $states["_renovaciones_pendientes"][$ren_id] ?? null;
-}
-
-function borrarRenovacionPendienteAdmin($file, &$states, $ren_id) {
-    if (isset($states["_renovaciones_pendientes"][$ren_id])) {
-        unset($states["_renovaciones_pendientes"][$ren_id]);
-    }
-
-    if (isset($states["_renovaciones_pendientes"]) && empty($states["_renovaciones_pendientes"])) {
-        unset($states["_renovaciones_pendientes"]);
-    }
-
-    saveStates($file, $states);
-}
-
-function tecladoAdminRenovacion($ren_id) {
-    return [
-        "inline_keyboard" => [
-            [
-                ["text" => "✅ Aprobar renovación", "callback_data" => "admin_ren_ok_".$ren_id]
-            ],
-            [
-                ["text" => "💬 Abrir chat", "callback_data" => "admin_ren_chat_".$ren_id]
-            ],
-            [
-                ["text" => "❌ Rechazar pago", "callback_data" => "admin_ren_no_".$ren_id]
-            ]
-        ]
-    ];
-}
-
-function aplicarRenovacionRailway($usuario, $meses, $es_normal = false) {
-    $meses = (int)$meses;
-
-    if (!in_array($meses, [3, 6, 12], true)) {
-        return ["ok" => false, "error" => "Duración no válida."];
-    }
-
-    try {
-        $pdo = getRailwayPdo();
-
-        if ($es_normal) {
-            $buscar = $pdo->prepare("
-                SELECT id, nombre, fecha_caducidad
-                FROM clientes_normales
-                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-                ORDER BY id DESC
-                LIMIT 1
-            ");
-            $buscar->execute([$usuario, $usuario]);
-            $row = $buscar->fetch();
-
-            if (!$row) {
-                return ["ok" => false, "error" => "No encuentro el cliente normal en Railway: ".$usuario];
-            }
-
-            $id = (int)$row["id"];
-
-            $pdo->prepare("UPDATE clientes_normales SET fecha_caducidad = NULL WHERE id = ? AND CAST(fecha_caducidad AS CHAR) = '0000-00-00'")->execute([$id]);
-
-            $sql = "
-                UPDATE clientes_normales
-                SET fecha_caducidad = DATE_ADD(
-                    CASE
-                        WHEN fecha_caducidad IS NOT NULL
-                         AND fecha_caducidad >= CURDATE()
-                        THEN fecha_caducidad
-                        ELSE CURDATE()
-                    END,
-                    INTERVAL ".$meses." MONTH
-                ),
-                estado = 'Activo'
-                WHERE id = ?
-                LIMIT 1
-            ";
-
-            $upd = $pdo->prepare($sql);
-            $upd->execute([$id]);
-
-            $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM clientes_normales WHERE id=? LIMIT 1");
-            $ver->execute([$id]);
-            $nuevo = $ver->fetch();
-
-            if (!$nuevo) {
-                return ["ok" => false, "error" => "Se actualizó, pero no pude verificar la nueva fecha."];
-            }
-
-            return [
-                "ok" => true,
-                "id" => $id,
-                "usuario" => $nuevo["nombre"],
-                "nueva_caducidad" => $nuevo["fecha_caducidad"],
-                "estado" => $nuevo["estado"],
-                "tipo_tabla" => "clientes_normales"
-            ];
-        }
-
-        $buscar = $pdo->prepare("
-            SELECT id, nombre, fecha_caducidad
-            FROM referidos
-            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        $buscar->execute([$usuario, $usuario]);
-        $ref = $buscar->fetch();
-
-        if (!$ref) {
-            return ["ok" => false, "error" => "No encuentro el referido en Railway: ".$usuario];
-        }
-
-        $id = (int)$ref["id"];
-
-        $pdo->prepare("UPDATE referidos SET fecha_caducidad = NULL WHERE id = ? AND CAST(fecha_caducidad AS CHAR) = '0000-00-00'")->execute([$id]);
-
-        $sql = "
-            UPDATE referidos
-            SET fecha_caducidad = DATE_ADD(
-                CASE
-                    WHEN fecha_caducidad IS NOT NULL
-                     AND fecha_caducidad >= CURDATE()
-                    THEN fecha_caducidad
-                    ELSE CURDATE()
-                END,
-                INTERVAL ".$meses." MONTH
-            ),
-            estado = 'Activo'
-            WHERE id = ?
-            LIMIT 1
-        ";
-
-        $upd = $pdo->prepare($sql);
-        $upd->execute([$id]);
-
-        $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM referidos WHERE id=? LIMIT 1");
-        $ver->execute([$id]);
-        $nuevo = $ver->fetch();
-
-        if (!$nuevo) {
-            return ["ok" => false, "error" => "Se actualizó, pero no pude verificar la nueva fecha."];
-        }
-
-        return [
-            "ok" => true,
-            "id" => $id,
-            "usuario" => $nuevo["nombre"],
-            "nueva_caducidad" => $nuevo["fecha_caducidad"],
-            "estado" => $nuevo["estado"],
-            "tipo_tabla" => "referidos"
-        ];
-
-    } catch (Throwable $e) {
-        return ["ok" => false, "error" => $e->getMessage()];
-    }
-}
-
-
-function fechaBonita($fecha) {
-    if (!$fecha || $fecha === "0000-00-00") {
-        return "Sin fecha";
-    }
-
-    $ts = strtotime($fecha);
-    return $ts ? date("d/m/Y", $ts) : $fecha;
-}
-
-function renovarPrecioDesdeData($data) {
-    $meses = (int)($data["meses"] ?? 0);
-
-    if (!empty($data["es_vip"])) {
-        return renovarPrecioReferidos($data["nivel"] ?? "", $meses);
+$today=date('Y-m-d');
+$pdo->prepare("UPDATE referidos SET estado='Inactivo' WHERE fecha_caducidad IS NOT NULL AND fecha_caducidad < ?")->execute([$today]);
+$msg='';
+
+/* ===== DEBUG REFERIDO MDPRIME =====
+   Uso: panel.php?debug_ref=usuario
+   Muestra si un referido está realmente guardado en Railway. */
+if (isset($_GET['debug_ref']) && $_GET['debug_ref'] !== '') {
+  header('Content-Type: text/plain; charset=utf-8');
+
+  $q = clean($_GET['debug_ref']);
+  echo "MDPRIME PANEL DEBUG REFERIDO\n";
+  echo "━━━━━━━━━━━━━━━━━━━━━━\n";
+  echo "Buscado: ".$q."\n\n";
+
+  try {
+    $stmt = $pdo->prepare("
+      SELECT r.id, r.cliente_id, r.nombre, r.fecha_alta, r.fecha_caducidad, r.estado, c.nombre AS referente
+      FROM referidos r
+      LEFT JOIN clientes c ON c.id = r.cliente_id
+      WHERE LOWER(TRIM(r.nombre)) = LOWER(TRIM(?))
+         OR REPLACE(LOWER(TRIM(r.nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+      ORDER BY r.id DESC
+      LIMIT 20
+    ");
+    $stmt->execute([$q,$q]);
+    $rows = $stmt->fetchAll();
+
+    if (!$rows) {
+      echo "❌ No aparece en Railway.\n";
+      echo "Últimos 10 referidos guardados:\n\n";
+      $last = $pdo->query("SELECT r.id, r.nombre, r.cliente_id, r.fecha_caducidad, r.estado, c.nombre AS referente FROM referidos r LEFT JOIN clientes c ON c.id=r.cliente_id ORDER BY r.id DESC LIMIT 10")->fetchAll();
+      foreach ($last as $r) {
+        echo "#".$r['id']." · ".$r['nombre']." · referente: ".($r['referente'] ?: 'Sin referente')." · caduca: ".$r['fecha_caducidad']." · estado: ".$r['estado']."\n";
+      }
+      exit;
+    }
+
+    echo "✅ Encontrado en Railway:\n\n";
+    foreach ($rows as $r) {
+      echo "#".$r['id']."\n";
+      echo "Nombre: ".$r['nombre']."\n";
+      echo "cliente_id: ".$r['cliente_id']."\n";
+      echo "Referente: ".($r['referente'] ?: 'Sin referente')."\n";
+      echo "Alta: ".$r['fecha_alta']."\n";
+      echo "Caduca: ".$r['fecha_caducidad']."\n";
+      echo "Estado: ".$r['estado']."\n";
+      echo "━━━━━━━━━━━━━━━━━━━━━━\n";
     }
-
-    return renovarPrecioNormal($meses);
-}
-
-function renovarTipoDesdeData($data) {
-    return !empty($data["es_vip"]) ? "Referidos VIP" : "Tarifa estándar";
-}
-
-function mensajePagoRenovacion($data) {
-    global $payment_link;
-
-    $usuario = $data["usuario"] ?? "Sin usuario";
-    $meses = (int)($data["meses"] ?? 0);
-    $precio = renovarPrecioDesdeData($data);
-    $tipo = renovarTipoDesdeData($data);
-    $nivel = !empty($data["es_vip"]) ? renovarNivelTxt($data["nivel"] ?? "") : "No aplica";
-
-    return "💳 PAGO DE RENOVACIÓN MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".$usuario."
-
-📦 Duración:
-".$meses." meses
-
-💳 Tipo:
-".$tipo."
-
-🏆 Nivel:
-".$nivel."
-
-💶 Importe:
-".$precio."€
-
-━━━━━━━━━━━━━━━━━━
-
-🔗 Enlace de pago:
-".$payment_link."
-
-━━━━━━━━━━━━━━━━━━
-
-📸 Cuando termines el pago, envía aquí la captura del comprobante.
-
-Tu solicitud quedará pendiente hasta revisar el pago.";
-}
-
-function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
-    $usuario = $data["usuario"] ?? "Sin usuario";
-    $meses = (int)($data["meses"] ?? 0);
-    $precio = renovarPrecioDesdeData($data);
-    $tipo = renovarTipoDesdeData($data);
-    $nivel = !empty($data["es_vip"]) ? renovarNivelTxt($data["nivel"] ?? "") : "No aplica";
-    $caduca = $data["caduca"] ?? "No encontrada";
-    $dias = $data["dias"] ?? "No disponible";
-
-    $nombre = trim(
-        ($update_from["first_name"] ?? "") . " " .
-        ($update_from["last_name"] ?? "")
-    );
-
-    $usernameTelegram = $update_from["username"] ?? "";
-
-    return "💳 NUEVO COMPROBANTE DE RENOVACIÓN
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario MDPRIME:
-".$usuario."
-
-👤 Nombre Telegram:
-".$nombre."
-
-📱 Usuario Telegram:
-".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
-
-🆔 Chat ID:
-".$chat_id."
-
-📦 Duración:
-".$meses." meses
-
-💳 Tipo:
-".$tipo."
-
-🏆 Nivel:
-".$nivel."
-
-💶 Importe:
-".$precio."€
-
-📅 Caduca:
-".$caduca."
-
-⏳ Tiempo restante:
-".$dias."
-
-🕒 Fecha:
-".date("d/m/Y H:i")."
-
-━━━━━━━━━━━━━━━━━━
-
-📸 Comprobante recibido debajo.
-
-💬 Responder:
-
-/reply ".$chat_id." Hola ".$usuario.", pago recibido. Procedemos con tu renovación.";
-}
-
-/* =========================
-   RECIBIR UPDATE
-========================= */
-
-$content = file_get_contents("php://input");
-
-if (!$content) {
-    http_response_code(200);
     exit;
-}
 
-$update = json_decode($content, true);
-
-if (isset($update["callback_query"])) {
-    $callback = $update["callback_query"];
-    $callback_id = $callback["id"] ?? "";
-    $callback_data = $callback["data"] ?? "";
-    $callback_message = $callback["message"] ?? [];
-    $chat_id = $callback_message["chat"]["id"] ?? "";
-    $message_id = $callback_message["message_id"] ?? "";
-    $from = $callback["from"] ?? [];
-
-    answerCallbackQuery($callback_id);
-
-    $states = loadStates($state_file);
-
-    if (strpos($callback_data, "admin_ren_ok_") === 0 || strpos($callback_data, "admin_ren_no_") === 0 || strpos($callback_data, "admin_ren_chat_") === 0) {
-        if ((string)$chat_id !== (string)$admin_id) {
-            answerCallbackQuery($callback_id, "No autorizado.");
-            http_response_code(200);
-            exit;
-        }
-
-        $aprobar = strpos($callback_data, "admin_ren_ok_") === 0;
-        $abrir_chat = strpos($callback_data, "admin_ren_chat_") === 0;
-
-        if ($aprobar) {
-            $ren_id = substr($callback_data, strlen("admin_ren_ok_"));
-        } elseif ($abrir_chat) {
-            $ren_id = substr($callback_data, strlen("admin_ren_chat_"));
-        } else {
-            $ren_id = substr($callback_data, strlen("admin_ren_no_"));
-        }
-
-        $pendiente = obtenerRenovacionPendienteAdmin($states, $ren_id);
-
-        if (!$pendiente) {
-            editMessageText($chat_id, $message_id, "ℹ️ Esta renovación ya fue gestionada o no existe.");
-            http_response_code(200);
-            exit;
-        }
-
-        if ($abrir_chat) {
-            $usuario = $pendiente["usuario"] ?? "Sin usuario";
-            $cliente_chat_id = $pendiente["chat_id_cliente"] ?? "";
-            $from_cliente = $pendiente["telegram_from"] ?? [];
-
-            $nombreTelegram = trim(
-                ($from_cliente["first_name"] ?? "") . " " .
-                ($from_cliente["last_name"] ?? "")
-            );
-            $aliasTelegram = $from_cliente["username"] ?? "";
-            $aliasTxt = $aliasTelegram !== "" ? "@".$aliasTelegram : "Sin alias público";
-            $linkTelegram = $aliasTelegram !== "" ? "https://t.me/".$aliasTelegram : "No disponible";
-            $mesesInfo = (int)($pendiente["meses"] ?? 0);
-            $precioInfo = renovarPrecioDesdeData($pendiente);
-            $tipoInfo = renovarTipoDesdeData($pendiente);
-            $nivelInfo = !empty($pendiente["es_vip"]) ? renovarNivelTxt($pendiente["nivel"] ?? "") : "Plan normal";
-
-            answerCallbackQuery($callback_id, "Datos del cliente enviados.");
-
-            sendMessage(
-                $chat_id,
-                "💬 DATOS PARA CONTACTAR\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan:\n".$tipoInfo."\n\n🏆 Paquete / nivel:\n".$nivelInfo."\n\n⏳ Meses:\n".$mesesInfo."\n\n💶 Importe:\n".$precioInfo."€\n\n━━━━━━━━━━━━━━━━━━\n\nPara responder desde el bot:\n/reply ".$cliente_chat_id." Hola ".$usuario.", "
-            );
-
-            http_response_code(200);
-            exit;
-        }
-
-        $usuario = $pendiente["usuario"] ?? "Sin usuario";
-        $meses = (int)($pendiente["meses"] ?? 0);
-        $cliente_chat_id = $pendiente["chat_id_cliente"] ?? "";
-
-        if ($aprobar) {
-            $resultado = aplicarRenovacionRailway($usuario, $meses, !empty($pendiente["es_normal"]));
-
-            if (!empty($resultado["ok"])) {
-                borrarRenovacionPendienteAdmin($state_file, $states, $ren_id);
-
-                $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
-
-                $precio = renovarPrecioDesdeData($pendiente);
-                $tipo = renovarTipoDesdeData($pendiente);
-                $nivelTxt = !empty($pendiente["es_vip"]) ? renovarNivelTxt($pendiente["nivel"] ?? "") : "Plan normal";
-
-                $from_cliente = $pendiente["telegram_from"] ?? [];
-                $nombreTelegram = trim(
-                    ($from_cliente["first_name"] ?? "") . " " .
-                    ($from_cliente["last_name"] ?? "")
-                );
-                $aliasTelegram = $from_cliente["username"] ?? "";
-                $aliasTxt = $aliasTelegram !== "" ? "@".$aliasTelegram : "Sin alias público";
-                $linkTelegram = $aliasTelegram !== "" ? "https://t.me/".$aliasTelegram : "No disponible";
-
-                editMessageText(
-                    $chat_id,
-                    $message_id,
-                    "━━━━━━━━━━━━━━━━━━\n✅ RENOVACIÓN APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$tipo."\n\n🏆 Paquete / nivel:\n".$nivelTxt."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados.\n━━━━━━━━━━━━━━━━━━"
-                );
-
-                if ($cliente_chat_id !== "") {
-                    sendMessage(
-                        $cliente_chat_id,
-                        "✅ Pago aprobado.\n\nTu renovación se ha aplicado correctamente.\n\n📦 Plan contratado: ".$tipo."\n🏆 Paquete / nivel: ".$nivelTxt."\n⏳ Meses añadidos: ".$meses."\n💶 Importe pagado: ".$precio."€\n📅 Nueva caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME."
-                    );
-                }
-
-            } else {
-                editMessageText(
-                    $chat_id,
-                    $message_id,
-                    "❌ NO SE PUDO APLICAR LA RENOVACIÓN\n\n👤 Usuario:\n".$usuario."\n\nError:\n".($resultado["error"] ?? "Error desconocido")."\n\nNo se ha borrado la solicitud pendiente."
-                );
-            }
-
-        } else {
-            borrarRenovacionPendienteAdmin($state_file, $states, $ren_id);
-
-            editMessageText(
-                $chat_id,
-                $message_id,
-                "❌ RENOVACIÓN RECHAZADA\n\n👤 Usuario:\n".$usuario."\n\nNo se han sumado meses."
-            );
-
-            if ($cliente_chat_id !== "") {
-                sendMessage(
-                    $cliente_chat_id,
-                    "❌ No hemos podido validar tu pago.\n\nNo se ha aplicado ninguna renovación.\n\nSi crees que es un error, contacta con soporte."
-                );
-            }
-        }
-
-        http_response_code(200);
-        exit;
-    }
-
-    $ren_data = renovarEstado($states, $chat_id);
-
-    if (strpos($callback_data, "ren_") !== 0 || empty($ren_data)) {
-        http_response_code(200);
-        exit;
-    }
-
-    if ($callback_data === "ren_cancelar") {
-        limpiarRenovarEstado($state_file, $states, $chat_id);
-        editMessageText($chat_id, $message_id, "❌ Renovación cancelada.");
-        http_response_code(200);
-        exit;
-    }
-
-    if (strpos($callback_data, "ren_dur_") === 0) {
-        $meses = (int)str_replace("ren_dur_", "", $callback_data);
-        $ren_data["meses"] = $meses;
-
-        if (!empty($ren_data["es_vip"])) {
-            // V27: si el sistema ya sabe el nivel, no se pregunta paquete.
-            $nivel_auto = strtolower(trim($ren_data["nivel_actual"] ?? ""));
-
-            if ($nivel_auto !== "") {
-                $ren_data["nivel"] = $nivel_auto;
-                guardarComprobanteRenovacionEstado($state_file, $states, $chat_id, $ren_data);
-
-                editMessageText(
-                    $chat_id,
-                    $message_id,
-                    mensajePagoRenovacion($ren_data)
-                );
-            } else {
-                guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
-
-                editMessageText(
-                    $chat_id,
-                    $message_id,
-                    "🏆 REFERIDOS VIP\n\nNo he podido detectar automáticamente tu nivel.\nSelecciona tu nivel de referidos:",
-                    renovarNivelKeyboard($ren_data["nivel_actual"] ?? "")
-                );
-            }
-        } else {
-            guardarComprobanteRenovacionEstado($state_file, $states, $chat_id, $ren_data);
-
-            editMessageText(
-                $chat_id,
-                $message_id,
-                mensajePagoRenovacion($ren_data)
-            );
-        }
-
-        http_response_code(200);
-        exit;
-    }
-
-    if (strpos($callback_data, "ren_lvl_") === 0) {
-        $nivel = str_replace("ren_lvl_", "", $callback_data);
-        $nivel_actual = $ren_data["nivel_actual"] ?? "";
-
-        if (renovarOrdenNivel($nivel) > renovarOrdenNivel($nivel_actual)) {
-            answerCallbackQuery(
-                $callback_id,
-                "❌ No tienes acceso a ese nivel. Tu nivel actual es ".renovarNivelTxt($nivel_actual)."."
-            );
-            http_response_code(200);
-            exit;
-        }
-
-        $ren_data["nivel"] = $nivel;
-        guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
-
-        editMessageText(
-            $chat_id,
-            $message_id,
-            renovarResumenTexto($ren_data),
-            renovarConfirmarKeyboard()
-        );
-
-        http_response_code(200);
-        exit;
-    }
-
-    if ($callback_data === "ren_confirmar") {
-        if (empty($ren_data["meses"])) {
-            editMessageText($chat_id, $message_id, "❌ Faltan datos de la renovación. Vuelve a iniciar /renovar.");
-            limpiarRenovarEstado($state_file, $states, $chat_id);
-            http_response_code(200);
-            exit;
-        }
-
-        guardarComprobanteRenovacionEstado($state_file, $states, $chat_id, $ren_data);
-
-        editMessageText(
-            $chat_id,
-            $message_id,
-            mensajePagoRenovacion($ren_data)
-        );
-
-        http_response_code(200);
-        exit;
-    }
-
-    http_response_code(200);
+  } catch(Throwable $e) {
+    echo "❌ Error debug:\n".$e->getMessage()."\n";
     exit;
+  }
 }
 
-if (!isset($update["message"])) {
-    http_response_code(200);
-    exit;
-}
 
-$chat_id = $update["message"]["chat"]["id"];
-$text = trim($update["message"]["text"] ?? "");
-$message_id = $update["message"]["message_id"] ?? null;
+if($_SERVER['REQUEST_METHOD']==='POST'){
+  $a=$_POST['action']??'';
+  try{
+    if($a==='add_cliente'){$nombre=clean($_POST['nombre']??'');$contacto=clean($_POST['contacto']??'');$telegram=clean($_POST['telegram']??'');$telegram=ltrim($telegram,'@');$nota=clean($_POST['nota']??'');if($nombre!==''){$pdo->prepare("INSERT INTO clientes(nombre,contacto,telefono,telegram,nota) VALUES(?,?,?,?,?)")->execute([$nombre,$contacto,$contacto,$telegram,$nota]);$msg='Cliente añadido.';}}
+    if($a==='update_cliente'){$id=(int)($_POST['cliente_id']??0);$nombre=clean($_POST['nombre']??'');$contacto=clean($_POST['contacto']??'');$telegram=clean($_POST['telegram']??'');$telegram=ltrim($telegram,'@');$nota=clean($_POST['nota']??'');if($id&&$nombre!==''){$pdo->prepare("UPDATE clientes SET nombre=?,contacto=?,telefono=?,telegram=?,nota=? WHERE id=?")->execute([$nombre,$contacto,$contacto,$telegram,$nota,$id]);$msg='Perfil del referente actualizado.';}}
+    if($a==='delete_cliente'){$id=(int)($_POST['cliente_id']??0);if($id){$pdo->prepare("DELETE FROM referidos WHERE cliente_id=?")->execute([$id]);$pdo->prepare("DELETE FROM clientes WHERE id=?")->execute([$id]);$msg='Referente eliminado junto con todos sus referidos.';}}
+    if($a==='add_referido'){
+      $cid=(int)($_POST['cliente_id']??0);
 
-$states = loadStates($state_file);
-$user_state = getUserMode($states, $chat_id);
+      // Compatibilidad con distintos formularios del panel.
+      $nombre=clean($_POST['nombre'] ?? ($_POST['nombre_referido'] ?? ''));
+      $alta=dnull($_POST['fecha_alta'] ?? ($_POST['fecha'] ?? ''))?:$today;
+      $cad=dnull($_POST['fecha_caducidad'] ?? ($_POST['caduca'] ?? ''));
+      $estado=clean($_POST['estado']??'Activo');
+      $nota=clean($_POST['nota']??'');
 
-// Si estamos esperando el comprobante de renovación, aceptar captura/foto/documento.
-if ($user_state === "esperando_comprobante_renovacion") {
-    $tiene_comprobante = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
+      if($cad&&$cad<$today)$estado='Inactivo';
 
-    if ($tiene_comprobante && $message_id) {
-        $comp_data = obtenerComprobanteRenovacionEstado($states, $chat_id);
-        $from_user = $update["message"]["from"] ?? [];
+      if($nombre===''){
+        throw new Exception('El nombre del referido está vacío. No se ha guardado.');
+      }
 
-        $ren_id = uniqid("r");
-        $comp_data["chat_id_cliente"] = $chat_id;
-        $comp_data["telegram_from"] = $from_user;
+      // Si por cualquier motivo el cliente_id no llega, intentamos recuperarlo desde return_modal/open.
+      if(!$cid){
+        $modalRaw = clean($_POST['return_modal'] ?? ($_GET['open'] ?? ''));
+        if(preg_match('/^m(\d+)$/', $modalRaw, $m)){
+          $cid = (int)$m[1];
+        }
+      }
 
-        guardarRenovacionPendienteAdmin($state_file, $states, $ren_id, $comp_data);
+      if(!$cid){
+        throw new Exception('No se recibió el ID del referente. No se ha guardado el referido.');
+      }
 
-        sendInlineMessage(
-            $admin_id,
-            mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza la renovación.",
-            tecladoAdminRenovacion($ren_id)
-        );
+      $checkCliente=$pdo->prepare("SELECT id,nombre FROM clientes WHERE id=? LIMIT 1");
+      $checkCliente->execute([$cid]);
+      $clienteOk=$checkCliente->fetch();
 
-        forwardMessage($admin_id, $chat_id, $message_id);
+      if(!$clienteOk){
+        throw new Exception('El referente seleccionado no existe en Railway. ID: '.$cid);
+      }
 
-        limpiarComprobanteRenovacionEstado($state_file, $states, $chat_id);
+      // Evitar duplicados exactos en el mismo referente.
+      $dup=$pdo->prepare("SELECT id FROM referidos WHERE cliente_id=? AND LOWER(TRIM(nombre))=LOWER(TRIM(?)) LIMIT 1");
+      $dup->execute([$cid,$nombre]);
+      if($dup->fetch()){
+        throw new Exception('Ese referido ya existe para este referente: '.$nombre);
+      }
 
-        sendMessage(
-            $chat_id,
-            "✅ Comprobante recibido correctamente.\n\nQueda pendiente de revisión. Cuando se apruebe el pago, tu renovación se aplicará automáticamente."
-        );
+      $insertRef=$pdo->prepare("INSERT INTO referidos(cliente_id,nombre,fecha_alta,fecha_caducidad,estado,nota) VALUES(?,?,?,?,?,?)");
+      $insertRef->execute([$cid,$nombre,$alta,$cad,$estado,$nota]);
 
-        http_response_code(200);
-        exit;
+      $newId=(int)$pdo->lastInsertId();
+
+      $verify=$pdo->prepare("SELECT id,nombre,cliente_id FROM referidos WHERE id=? LIMIT 1");
+      $verify->execute([$newId]);
+      $rowVerify=$verify->fetch();
+
+      if(!$newId || !$rowVerify){
+        throw new Exception('El panel intentó guardar el referido, pero Railway no devolvió confirmación.');
+      }
+
+      $msg='Referido añadido correctamente. ID Railway: '.$newId.' · Usuario: '.$rowVerify['nombre'].' · Referente: '.$clienteOk['nombre'];
+    }
+    if($a==='update_fecha_inactivo'){
+      $id=(int)($_POST['ref_id']??0);
+      $cad=dnull($_POST['fecha_caducidad']??'');
+      if($id && $cad){
+        $estado = ($cad < $today) ? 'Inactivo' : 'Activo';
+        $pdo->prepare("UPDATE referidos SET fecha_caducidad=?, estado=? WHERE id=?")->execute([$cad,$estado,$id]);
+        $msg='Fecha de caducidad actualizada.';
+      }
+    }
+    if($a==='update_referido'){$id=(int)($_POST['ref_id']??0);$nombre=clean($_POST['nombre']??'');$alta=dnull($_POST['fecha_alta']??'');$cad=dnull($_POST['fecha_caducidad']??'');$estado=clean($_POST['estado']??'Activo');$nota=clean($_POST['nota']??'');if($cad&&$cad<$today)$estado='Inactivo';if($id&&$nombre!==''){$pdo->prepare("UPDATE referidos SET nombre=?,fecha_alta=?,fecha_caducidad=?,estado=?,nota=? WHERE id=?")->execute([$nombre,$alta,$cad,$estado,$nota,$id]);$msg='Referido actualizado.';}}
+    if($a==='toggle_ref'){$id=(int)($_POST['ref_id']??0);if($id){$pdo->prepare("UPDATE referidos SET estado=IF(estado='Activo','Inactivo','Activo') WHERE id=?")->execute([$id]);$msg='Estado cambiado.';}}
+    if($a==='delete_ref'){$id=(int)($_POST['ref_id']??0);if($id){$pdo->prepare("DELETE FROM referidos WHERE id=?")->execute([$id]);$msg='Referido eliminado.';}}
+    if($a==='renew_ref'){
+      $id=(int)($_POST['ref_id']??0);
+      $months=(int)($_POST['months']??0);
+      if($id && in_array($months,[3,6,12])){
+        $pdo->prepare("UPDATE referidos SET fecha_caducidad = DATE_ADD(COALESCE(NULLIF(fecha_caducidad,'0000-00-00'), NULLIF(fecha_caducidad,''), CURDATE()), INTERVAL ? MONTH), estado='Activo' WHERE id=?")->execute([$months,$id]);
+        $msg='Referido renovado '.$months.' meses.';
+      }
+    }
+    if($a==='add_normal'){
+      $nombre=clean($_POST['nombre']??'');
+      $contacto=clean($_POST['contacto']??'');
+      $telegram=ltrim(clean($_POST['telegram']??''),'@');
+      $alta=dnull($_POST['fecha_alta']??'')?:$today;
+      $cad=dnull($_POST['fecha_caducidad']??'');
+      $estado=clean($_POST['estado']??'Activo');
+      $nota=clean($_POST['nota']??'');
+      if($cad&&$cad<$today)$estado='Inactivo';
+      if($nombre!==''){
+        $dup=$pdo->prepare("SELECT id FROM clientes_normales WHERE LOWER(TRIM(nombre))=LOWER(TRIM(?)) LIMIT 1");
+        $dup->execute([$nombre]);
+        if($dup->fetch()) throw new Exception('Ese cliente normal ya existe: '.$nombre);
+        $pdo->prepare("INSERT INTO clientes_normales(nombre,contacto,telefono,telegram,fecha_alta,fecha_caducidad,estado,nota) VALUES(?,?,?,?,?,?,?,?)")->execute([$nombre,$contacto,$contacto,$telegram,$alta,$cad,$estado,$nota]);
+        $msg='Cliente normal añadido correctamente. ID Railway: '.$pdo->lastInsertId();
+      }
+    }
+    if($a==='update_normal'){
+      $id=(int)($_POST['normal_id']??0);
+      $nombre=clean($_POST['nombre']??'');
+      $contacto=clean($_POST['contacto']??'');
+      $telegram=ltrim(clean($_POST['telegram']??''),'@');
+      $alta=dnull($_POST['fecha_alta']??'');
+      $cad=dnull($_POST['fecha_caducidad']??'');
+      $estado=clean($_POST['estado']??'Activo');
+      $nota=clean($_POST['nota']??'');
+      if($cad&&$cad<$today)$estado='Inactivo';
+      if($id&&$nombre!==''){
+        $pdo->prepare("UPDATE clientes_normales SET nombre=?,contacto=?,telefono=?,telegram=?,fecha_alta=?,fecha_caducidad=?,estado=?,nota=? WHERE id=?")->execute([$nombre,$contacto,$contacto,$telegram,$alta,$cad,$estado,$nota,$id]);
+        $msg='Cliente normal actualizado.';
+      }
+    }
+    if($a==='toggle_normal'){
+      $id=(int)($_POST['normal_id']??0);
+      if($id){$pdo->prepare("UPDATE clientes_normales SET estado=IF(estado='Activo','Inactivo','Activo') WHERE id=?")->execute([$id]);$msg='Estado de cliente normal cambiado.';}
+    }
+    if($a==='delete_normal'){
+      $id=(int)($_POST['normal_id']??0);
+      if($id){$pdo->prepare("DELETE FROM clientes_normales WHERE id=?")->execute([$id]);$msg='Cliente normal eliminado.';}
+    }
+    if($a==='renew_normal'){
+      $id=(int)($_POST['normal_id']??0);
+      $months=(int)($_POST['months']??0);
+      if($id && in_array($months,[3,6,12])){
+        $pdo->prepare("UPDATE clientes_normales SET fecha_caducidad = NULL WHERE id = ? AND CAST(fecha_caducidad AS CHAR) = '0000-00-00'")->execute([$id]);
+        $pdo->prepare("UPDATE clientes_normales SET fecha_caducidad = DATE_ADD(CASE WHEN fecha_caducidad IS NOT NULL AND fecha_caducidad >= CURDATE() THEN fecha_caducidad ELSE CURDATE() END, INTERVAL ".$months." MONTH), estado='Activo' WHERE id=?")->execute([$id]);
+        $msg='Cliente normal renovado '.$months.' meses.';
+      }
     }
 
-    if ($text !== "" && substr($text, 0, 1) !== "/") {
-        sendMessage(
-            $chat_id,
-            "📸 Para finalizar la renovación, envía una captura o imagen del comprobante de pago.\n\nSi quieres cancelar, escribe /start."
-        );
-
-        http_response_code(200);
-        exit;
-    }
+    if($a==='export_json'){$out=['clientes'=>[]];$cs=$pdo->query("SELECT * FROM clientes ORDER BY nombre")->fetchAll();foreach($cs as $c){$rs=$pdo->prepare("SELECT * FROM referidos WHERE cliente_id=? ORDER BY fecha_alta DESC,id DESC");$rs->execute([$c['id']]);$c['referidos']=$rs->fetchAll();$out['clientes'][]=$c;}header('Content-Type: application/json; charset=utf-8');header('Content-Disposition: attachment; filename="backup_mdprime_referidos_'.date('Ymd_His').'.json"');echo json_encode($out, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);exit;}
+  }catch(Throwable $e){$msg='Error: '.$e->getMessage();}
+  redirectBack($msg);
 }
+$msg=$_GET['msg']??'';
+$niveles=$pdo->query("SELECT * FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
+function nivelActual($activos,$niveles){$r=['nivel'=>'SIN NIVEL','min_activos'=>0,'trimestral'=>0,'semestral'=>0,'anual'=>0];foreach($niveles as $n){if($activos>=(int)$n['min_activos'])$r=$n;}$n=strtoupper($r['nivel']);$r['icon']=['COBRE'=>'🛡️','PLATA'=>'⚜️','ORO'=>'🏆','PLATINUM'=>'💎'][$n]??'🔒';$r['class']=strtolower($n);return $r;}
+function nextLevel($activos,$niveles){foreach($niveles as $n){if((int)$n['min_activos']>$activos)return $n;}return null;}
+function levelIcon($nivel){$n=strtoupper($nivel);return ['COBRE'=>'🛡️','PLATA'=>'⚜️','ORO'=>'🏆','PLATINUM'=>'💎'][$n]??'🔒';}
+$clientes=$pdo->query("SELECT c.*,COUNT(r.id) total_refs,SUM(CASE WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE()) THEN 1 ELSE 0 END) activos,SUM(CASE WHEN r.id IS NOT NULL AND NOT (r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())) THEN 1 ELSE 0 END) inactivos FROM clientes c LEFT JOIN referidos r ON r.cliente_id=c.id GROUP BY c.id ORDER BY activos DESC,total_refs DESC,nombre ASC")->fetchAll();
+$totalClientes=count($clientes);$totalRefs=0;$totalActivos=0;$totalInactivos=0;$nearUpgrade=0;$platinumCount=0;
+foreach($clientes as $c){$act=(int)$c['activos'];$totalRefs+=(int)$c['total_refs'];$totalActivos+=$act;$totalInactivos+=(int)$c['inactivos'];$n=nivelActual($act,$niveles);if(strtoupper($n['nivel'])==='PLATINUM')$platinumCount++;$nx=nextLevel($act,$niveles);if($nx&&((int)$nx['min_activos']-$act)<=2)$nearUpgrade++;}
+$top=$clientes[0]??null;$topNivel=$top?nivelActual((int)$top['activos'],$niveles):nivelActual(0,$niveles);$next=$top?nextLevel((int)$top['activos'],$niveles):null;$progress=$next?min(100,round(((int)$top['activos']/(int)$next['min_activos'])*100)):100;$pctAct=$totalRefs>0?round(($totalActivos/$totalRefs)*100):0;
+$latest=$pdo->query("SELECT r.*,c.nombre cliente_nombre FROM referidos r JOIN clientes c ON c.id=r.cliente_id ORDER BY r.id DESC LIMIT 7")->fetchAll();
+$limite3dias = date('Y-m-d', strtotime($today.' +3 days'));
+$soonStmt = $pdo->prepare("SELECT r.*, c.nombre cliente_nombre FROM referidos r JOIN clientes c ON c.id=r.cliente_id WHERE r.estado='Activo' AND r.fecha_caducidad IS NOT NULL AND r.fecha_caducidad >= ? AND r.fecha_caducidad <= ? ORDER BY r.fecha_caducidad ASC LIMIT 8");
+$soonStmt->execute([$today, $limite3dias]);
+$soon=$soonStmt->fetchAll();
+$caducan7Stmt=$pdo->prepare("SELECT COUNT(*) FROM referidos WHERE estado='Activo' AND fecha_caducidad IS NOT NULL AND fecha_caducidad >= ? AND fecha_caducidad <= ?");
+$caducan7Stmt->execute([$today, $limite3dias]);
+$caducan7=(int)$caducan7Stmt->fetchColumn();
+$buscadorRefs=$pdo->query("SELECT r.*, c.nombre cliente_nombre, c.id cliente_id_real FROM referidos r JOIN clientes c ON c.id=r.cliente_id ORDER BY r.nombre ASC, c.nombre ASC")->fetchAll();
+$referidosInactivos=$pdo->query("SELECT r.*, c.nombre cliente_nombre, c.id cliente_id_real FROM referidos r JOIN clientes c ON c.id=r.cliente_id WHERE NOT (r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad >= CURDATE())) ORDER BY r.fecha_caducidad ASC, r.nombre ASC")->fetchAll();
 
-if ($text === "") {
-    http_response_code(200);
-    exit;
-}
-
-$command = strtolower(trim(explode(" ", $text)[0]));
-$command = explode("@", $command)[0];
-
-$parts_text = explode(" ", $text, 2);
-$command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
-
-$chat_type = $update["message"]["chat"]["type"] ?? "private";
-
-// En grupos, ignorar cualquier texto normal que no sea comando.
-// Así el bot no responde "Comando no reconocido" a conversaciones normales.
-if ($chat_type !== "private" && substr($text, 0, 1) !== "/") {
-    http_response_code(200);
-    exit;
-}
-
-$message_id = $update["message"]["message_id"] ?? null;
-
-// Comandos privados usados dentro de grupos:
-// se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
-$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/soporte"];
-
-if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
-    if ($message_id) {
-        deleteMessage($chat_id, $message_id);
-    }
-
-    $aviso = "🔒 Esta consulta es privada.\n\nPara proteger tus datos, abre el bot en privado y usa el comando allí.";
-
-    $keyboard_inline = [
-        "inline_keyboard" => [
-            [
-                [
-                    "text" => "🔒 Abrir MDPRIME Bot",
-                    "url" => $bot_link
-                ]
-            ]
-        ]
-    ];
-
-    $sent = sendInlineMessage($chat_id, $aviso, $keyboard_inline);
-    $aviso_id = $sent["result"]["message_id"] ?? null;
-
-    if ($aviso_id) {
-        sleep(8);
-        deleteMessage($chat_id, $aviso_id);
-    }
-
-    http_response_code(200);
-    exit;
+$clientesNormales=$pdo->query("SELECT * FROM clientes_normales ORDER BY CASE WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE()) THEN 0 ELSE 1 END, fecha_caducidad ASC, nombre ASC")->fetchAll();
+$totalNormales=count($clientesNormales);
+$totalNormalesActivos=0;
+$totalNormalesInactivos=0;
+foreach($clientesNormales as $cn){
+  if(($cn['estado']??'')==='Activo' && (empty($cn['fecha_caducidad']) || $cn['fecha_caducidad'] >= $today)) $totalNormalesActivos++;
+  else $totalNormalesInactivos++;
 }
 
 
-
-$states = loadStates($state_file);
-$user_state = getUserMode($states, $chat_id);
-$saved_usuario = getSavedUsuario($states, $chat_id);
-
-// Seguridad extra para grupos:
-// si quedó un estado antiguo pendiente en un grupo, se limpia y NO se responde allí.
-// Esto evita que aparezca el mensaje "Introduce tu usuario..." en el grupo.
-if ($chat_type !== "private" && $user_state !== "") {
-    clearUserMode($state_file, $states, $chat_id);
-    http_response_code(200);
-    exit;
-}
-
-// Si el usuario escribe otro comando mientras el bot esperaba un dato,
-// cancelamos el estado anterior para que el comando funcione normal.
-if ($user_state !== "" && substr($text, 0, 1) === "/" && $command !== "/reply") {
-    clearUserMode($state_file, $states, $chat_id);
-    $user_state = "";
-}
-
-/* =========================
-   RESPONDER A CLIENTE ADMIN
-========================= */
-
-if ($command === "/reply") {
-
-    $parts = explode(" ", $text, 3);
-
-    if ((string)$chat_id !== (string)$admin_id) {
-        sendMessage($chat_id, "❌ Comando reservado para administración.");
-        http_response_code(200);
-        exit;
-    }
-
-    if (count($parts) >= 3) {
-
-        $reply_chat = trim($parts[1]);
-        $reply_msg = trim($parts[2]);
-
-        sendMessage($reply_chat, "📩 SOPORTE MDPRIME:
-
-".$reply_msg, false);
-
-        sendMessage($chat_id, "✅ Mensaje enviado correctamente.");
-
-    } else {
-
-        sendMessage($chat_id, "Uso correcto:
-/reply CHATID mensaje");
-
-    }
-
-    http_response_code(200);
-    exit;
-}
-
-/* =========================
-   RESPUESTAS POR ESTADO
-========================= */
-
-if ($user_state === "esperando_usuario_mdprime") {
-
-    $usuario = trim($text);
-    $pending = is_array($states[$chat_id] ?? null) ? ($states[$chat_id]["pending_command"] ?? "/micuenta") : "/micuenta";
-
-    $data = consultarClienteApi($usuario);
-
-    if (empty($data["ok"])) {
-        // Si no existe en la base de datos, no se guarda como cuenta.
-        // Se le ofrece contratación con precios normales.
-        iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario);
-        http_response_code(200);
-        exit;
-    }
-
-    saveUsuarioMdprime($state_file, $states, $chat_id, $usuario);
-
-    sendMessage($chat_id, "✅ Usuario guardado:
-".$usuario."
-
-A partir de ahora podrás consultar tu cuenta directamente.");
-
-    if ($pending === "/caducidad") {
-        sendLongMessage($chat_id, formatCaducidad($data));
-    } elseif ($pending === "/misreferidos") {
-        sendLongMessage($chat_id, formatMisReferidos($data));
-    } else {
-        sendLongMessage($chat_id, formatMiCuenta($data));
-    }
-
-    http_response_code(200);
-    exit;
-}
-
-if ($user_state === "renovar") {
-
-    $usuario_mdprime = trim($text);
-    iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario_mdprime);
-
-    http_response_code(200);
-    exit;
-}
-
-if ($user_state === "soporte") {
-
-    $admin_msg = "🛠 NUEVO SOPORTE
-
-Mensaje: ".$text."
-
-Chat ID: ".$chat_id;
-
-    sendMessage($admin_id, $admin_msg, false);
-
-    clearUserMode($state_file, $states, $chat_id);
-
-    sendMessage($chat_id, "✅ Soporte recibido. Te responderemos pronto.");
-
-    http_response_code(200);
-    exit;
-}
-
-/* =========================
-   COMANDOS PRINCIPALES
-========================= */
-
-switch ($command) {
-
-    case "/start":
-
-        $msg = "🔥 BIENVENIDO A MDPRIME 🔥
-
-📺 BOT AUTOMATIZADO
-
-━━━━━━━━━━━━━━━━━━
-
-📋 MENÚ PRINCIPAL
-
-💎 /planes
-Ver todos los planes disponibles.
-
-👥 /referidos
-Consultar tarifas del programa de referidos.
-
-❓ /queesreferidos
-¿Qué es el programa de referidos?
-
-👤 /micuenta
-Consultar tu cuenta MDPRIME.
-
-📅 /caducidad
-Ver caducidad de tu cuenta o referidos.
-
-👥 /misreferidos
-Ver tus referidos activos e inactivos.
-
-🔄 /cambiarusuario
-Cambiar el usuario guardado.
-
-📲 /apps
-Descargar aplicaciones.
-
-🏆 /agenda
-Agenda deportiva actualizada.
-
-🔄 /renovar
-Solicitar una renovación.
-
-💳 /pagar
-Realizar un pago.
-
-🛠 /soporte
-Contactar con soporte.
-
-━━━━━━━━━━━━━━━━━━
-
-⭐ Gracias por confiar en MDPRIME.";
-
-        sendMessage($chat_id, $msg);
-        break;
-
-    case "/planes":
-
-        $msg = "💎 PLANES PREMIUM
-
-👤 1 Usuario
-3 Meses → 35€
-6 Meses → 55€
-12 Meses → 80€
-
-👥 2 Usuarios
-3 Meses → 55€
-6 Meses → 85€
-12 Meses → 120€
-
-👨‍👩‍👦 3 Usuarios
-3 Meses → 80€
-6 Meses → 125€
-12 Meses → 165€";
-
-        sendMessage($chat_id, $msg);
-        break;
-
-    case "/queesreferidos":
-
-        $msg = "👥 ¿QUÉ ES REFERIDOS?
-
-━━━━━━━━━━━━━━━━━━
-
-📢 Planes de Referidos por Recomendación
-
-Recomienda MDPRIME a tus amigos y gana recompensas por cada nuevo cliente que contrate gracias a ti.
-
-🎁 Cuantos más referidos activos tengas, mayores serán tus beneficios.
-
-━━━━━━━━━━━━━━━━━━
-
-✅ Recomiendas MDPRIME
-✅ Tu amigo contrata
-✅ Ganas mejores beneficios";
-
-        sendMessage($chat_id, $msg);
-        break;
-
-    case "/referidos":
-
-        $msg = "🏆 REFERIDOS VIP
-
-🥉 COBRE
-Clientes 4+
-3 Meses → 30€
-6 Meses → 45€
-12 Meses → 65€
-
-🥈 PLATA
-Clientes 8+
-3 Meses → 27€
-6 Meses → 40€
-12 Meses → 58€
-
-🥇 ORO
-Clientes 12+
-3 Meses → 25€
-6 Meses → 37€
-12 Meses → 52€
-
-💠 PLATINUM
-Clientes 20+
-3 Meses → 22€
-6 Meses → 33€
-12 Meses → 45€";
-
-        sendMessage($chat_id, $msg);
-        break;
-
-    case "/apps":
-
-        $msg = "📲 APPS POR DOWNLOADER
-
-Elige la app que más te guste.
-La V9 es la más nueva.
-
-🔥 V9 → 6713896
-📺 OTT → 7669716
-⚡ V8 → 6541023";
-
-        sendMessage($chat_id, $msg);
-        break;
-
-    case "/micuenta":
-    case "/caducidad":
-    case "/misreferidos":
-
-        if ($command_arg !== "") {
-            procesarCuenta($chat_id, $command_arg, $command);
-        } elseif ($saved_usuario !== "") {
-            procesarCuenta($chat_id, $saved_usuario, $command);
-        } else {
-            setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", $command);
-
-            sendMessage($chat_id, "👤 Introduce tu usuario de P2P.
-
-Puede ser:
-
-• Tu nombre de referente
-• El nombre del referido
-• debes de estar en la base de datos
-• si no estas contacta con @zeppplay
-
-
-Ejemplo:
-Canelobel");
-        }
-
-        break;
-
-    case "/cambiarusuario":
-
-        setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", "/micuenta");
-
-        sendMessage($chat_id, "🔄 CAMBIAR USUARIO
-
-Introduce el nuevo usuario MDPRIME que quieres guardar.");
-
-        break;
-
-case "/renovar":
-
-    if ($saved_usuario !== "") {
-        iniciarRenovacionConUsuario($state_file, $states, $chat_id, $saved_usuario);
-        break;
-    }
-
-    setUserMode($state_file, $states, $chat_id, "renovar");
-
-    $nombre = trim(($update["message"]["from"]["first_name"] ?? "") . " " . ($update["message"]["from"]["last_name"] ?? ""));
-    $usernameTelegram = $update["message"]["from"]["username"] ?? "";
-
-    $texto = "🔄 RENOVACIÓN MDPRIME
-
-";
-    $texto .= "Introduce tu usuario de MDPRIME para comprobar tu tipo de cuenta.
-
-";
-    $texto .= "Ejemplo:
-";
-    $texto .= "Pepito44
-
-";
-    $texto .= "━━━━━━━━━━━━━━━━━━━━━━
-";
-    $texto .= "👤 Nombre Telegram: ".$nombre."
-";
-
-    if ($usernameTelegram != "") {
-        $texto .= "📱 Usuario Telegram: @".$usernameTelegram."
-";
-    } else {
-        $texto .= "📱 Usuario Telegram: (No disponible)
-";
-    }
-
-    sendMessage($chat_id, $texto);
-
-    break;
-   
-    case "/pagar":
-
-        $msg = "💳 PAGO SEGURO MDPRIME:
-
-https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N
-
-Después envía el comprobante.";
-
-        sendMessage($chat_id, $msg);
-        break;
-
-    case "/soporte":
-
-        setUserMode($state_file, $states, $chat_id, "soporte");
-
-        sendMessage($chat_id, "🛠 Describe tu problema con detalle.");
-        break;
-
-    case "/agenda":
-
-        $espera = sendMessage($chat_id, "⏳ Cargando agenda deportiva...", false);
-        $espera_id = $espera["result"]["message_id"] ?? null;
-
-        $json = getAgendaJsonCache();
-
-        if ($espera_id) {
-            deleteMessage($chat_id, $espera_id);
-        }
-
-        if (!$json) {
-            sendMessage($chat_id, "❌ No se pudo cargar la agenda deportiva.");
-            break;
-        }
-
-        $agenda = json_decode($json, true);
-
-        if (empty($agenda["events"])) {
-            sendMessage($chat_id, "⚠️ No hay eventos disponibles.");
-            break;
-        }
-
-        $primerDia = $agenda["events"][0]["fecha"];
-        $eventos = [];
-
-        foreach ($agenda["events"] as $evento) {
-            if ($evento["fecha"] == $primerDia) {
-                $eventos[] = $evento;
-            }
-        }
-
-        $msg = "🏆 AGENDA DEPORTIVA MDPRIME\n";
-        $msg .= "📡 Fuente: zeppplay\n";
-        $msg .= "📅 ".$primerDia."\n";
-        $msg .= "🎯 Eventos: ".count($eventos)."\n\n";
-
-        foreach ($eventos as $evento) {
-
-            $msg .= "🕒 ".$evento["hora"]."\n";
-            $msg .= "🏅 ".$evento["deporte"]."\n";
-
-            if (!empty($evento["competicion"])) {
-                $msg .= "🏆 ".$evento["competicion"]."\n";
-            }
-
-            $msg .= "📌 ".$evento["evento"]."\n";
-
-            if (!empty($evento["canal"])) {
-                $msg .= "📺 ".$evento["canal"]."\n";
-            }
-
-            $msg .= "━━━━━━━━━━━━━━\n";
-
-            if (mb_strlen($msg, "UTF-8") > 3500) {
-                break;
-            }
-        }
-
-        sendLongMessage($chat_id, $msg);
-        break;
-
-    case "/optimizarmd":
-
-        if ((string)$chat_id !== (string)$admin_id) {
-            sendMessage($chat_id, "❌ Comando reservado para administración.");
-            break;
-        }
-
-        $ok = optimizarIndicesRailway();
-
-        sendMessage($chat_id, $ok ? "✅ Índices de Railway optimizados correctamente." : "❌ No se pudieron optimizar los índices.");
-        break;
-
-    case "/debugrefs":
-
-        if ((string)$chat_id !== (string)$admin_id) {
-            sendMessage($chat_id, "❌ Comando reservado para administración.");
-            break;
-        }
-
-        try {
-            $pdo = getRailwayPdo();
-            $rows = $pdo->query("SELECT id, cliente_id, nombre, estado, fecha_alta, fecha_caducidad FROM referidos ORDER BY id DESC LIMIT 12")->fetchAll();
-
-            $msg = "🧪 ÚLTIMOS REFERIDOS EN RAILWAY\n\n";
-
-            foreach ($rows as $r) {
-                $msg .= "#".$r["id"]." · ".$r["nombre"]."\n";
-                $msg .= "cliente_id: ".$r["cliente_id"]." · estado: ".$r["estado"]."\n";
-                $msg .= "alta: ".$r["fecha_alta"]." · caduca: ".$r["fecha_caducidad"]."\n";
-                $msg .= "━━━━━━━━━━━━━━\n";
-            }
-
-            sendLongMessage($chat_id, $msg);
-
-        } catch (Throwable $e) {
-            sendMessage($chat_id, "❌ Error debugrefs:\n".$e->getMessage());
-        }
-
-        break;
-
-    case "/debugmd":
-
-        global $bot_version;
-
-        $debug_usuario = $command_arg !== "" ? $command_arg : "Brandon10";
-        $debug_data = consultarClienteApi($debug_usuario);
-
-        $debug_msg = "🧪 DEBUG MDPRIME\n\n";
-        $debug_msg .= "Versión bot:\n".$bot_version."\n\n";
-        $debug_msg .= "Usuario prueba:\n".$debug_usuario."\n\n";
-        $debug_msg .= "API ok:\n".(!empty($debug_data["ok"]) ? "SI" : "NO")."\n\n";
-        $debug_msg .= "Tipo:\n".($debug_data["tipo"] ?? "Sin tipo")."\n\n";
-        $debug_msg .= "Error:\n".($debug_data["error"] ?? "Sin error")."\n\n";
-
-        if (!empty($debug_data["detalle"])) {
-            $debug_msg .= "Detalle:\n".$debug_data["detalle"]."\n\n";
-        }
-
-        if (!empty($debug_data["http_code"])) {
-            $debug_msg .= "HTTP:\n".$debug_data["http_code"]."\n\n";
-        }
-
-        if (!empty($debug_data["raw_inicio"])) {
-            $debug_msg .= "Respuesta inicio:\n".$debug_data["raw_inicio"]."\n\n";
-        }
-
-        if (!empty($debug_data["referido"]["nombre"])) {
-            $debug_msg .= "Referido encontrado:\n".$debug_data["referido"]["nombre"]."\n";
-            $debug_msg .= "Caduca:\n".($debug_data["referido"]["caducidad"] ?? "Sin fecha")."\n";
-        }
-
-        if (!empty($debug_data["cliente"]["nombre"])) {
-            $debug_msg .= "Referente encontrado:\n".$debug_data["cliente"]["nombre"]."\n";
-        }
-
-        sendMessage($chat_id, $debug_msg);
-        break;
-
-    case "/test":
-
-        global $bot_version;
-        sendMessage($chat_id, "allow_url_fopen: ".ini_get("allow_url_fopen")."\nVersión: ".$bot_version);
-        break;
-
-    default:
-
-        $msg = "❌ Comando no reconocido.
-
-Usa:
-/planes
-/referidos
-/micuenta
-/caducidad
-/misreferidos
-/apps
-/agenda
-/renovar
-/pagar
-/soporte";
-
-        sendMessage($chat_id, $msg);
-        break;
-}
-
-http_response_code(200);
-exit;
+/* ===== DETECTOR DE REFERIDOS REPETIDOS ENTRE REFERENTES =====
+   Compara nombres normalizados y solo avisa cuando aparecen en más de un referente. */
+$duplicadosReferidos=$pdo->query("
+  SELECT 
+    LOWER(TRIM(r.nombre)) AS nombre_normalizado,
+    MIN(r.nombre) AS nombre_mostrado,
+    COUNT(*) AS repeticiones,
+    COUNT(DISTINCT r.cliente_id) AS referentes_distintos,
+    GROUP_CONCAT(DISTINCT c.nombre ORDER BY c.nombre SEPARATOR ' · ') AS referentes,
+    GROUP_CONCAT(CONCAT(r.id,'|',c.nombre,'|',r.estado,'|',COALESCE(r.fecha_alta,''),'|',COALESCE(r.fecha_caducidad,''),'|',COALESCE(r.nota,'')) ORDER BY c.nombre SEPARATOR '###') AS detalles
+  FROM referidos r
+  JOIN clientes c ON c.id=r.cliente_id
+  WHERE TRIM(r.nombre) <> ''
+  GROUP BY LOWER(TRIM(r.nombre))
+  HAVING referentes_distintos > 1
+  ORDER BY referentes_distintos DESC, repeticiones DESC, nombre_mostrado ASC
+")->fetchAll();
+$totalDuplicadosReferidos=count($duplicadosReferidos);
+
+
+/* ===== PAGINACIÓN MDPRIME: 12 CLIENTES Y 12 INACTIVOS POR PÁGINA ===== */
+$porPagina = 12;
+$paginaClientes = max(1, (int)($_GET['pagina_clientes'] ?? 1));
+$paginaInactivos = max(1, (int)($_GET['pagina_inactivos'] ?? 1));
+$totalPagClientes = max(1, (int)ceil(count($clientes) / $porPagina));
+$totalPagInactivos = max(1, (int)ceil(count($referidosInactivos) / $porPagina));
+if($paginaClientes > $totalPagClientes) $paginaClientes = $totalPagClientes;
+if($paginaInactivos > $totalPagInactivos) $paginaInactivos = $totalPagInactivos;
+$clientesPagina = array_slice($clientes, ($paginaClientes - 1) * $porPagina, $porPagina);
+$referidosInactivosPagina = array_slice($referidosInactivos, ($paginaInactivos - 1) * $porPagina, $porPagina);
+function pageUrl($key, $value){ $q=$_GET; $q[$key]=max(1,(int)$value); return $_SERVER['PHP_SELF'].'?'.http_build_query($q); }
 
 ?>
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>MDPRIME Referidos VIP V6</title>
+<style>
+:root{--bg:#030405;--panel:#0b1014;--panel2:#111820;--gold:#f5c542;--gold2:#b78317;--line:rgba(245,197,66,.28);--txt:#f8fafc;--muted:#aeb7c4;--green:#35d04f;--red:#ff3b30;--blue:#1fb6ff;--cyan:#32d3c6;--shadow:0 24px 70px rgba(0,0,0,.55);--radius:22px}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;max-width:100%;overflow-x:hidden}body{font-family:Inter,system-ui,Segoe UI,Arial;background:var(--bg);color:var(--txt);min-height:100vh}body:before{content:"";position:fixed;inset:0;z-index:-3;background:radial-gradient(circle at 20% 0%,rgba(245,197,66,.17),transparent 26%),radial-gradient(circle at 83% 5%,rgba(31,182,255,.12),transparent 24%),linear-gradient(135deg,#010203,#071018 45%,#030405)}body:after{content:"";position:fixed;inset:0;z-index:-2;background-image:linear-gradient(rgba(245,197,66,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(245,197,66,.035) 1px,transparent 1px);background-size:48px 48px;opacity:.34}.app{display:grid;grid-template-columns:245px 1fr;min-height:100vh}.sidebar{position:sticky;top:0;height:100vh;border-right:1px solid var(--line);background:linear-gradient(180deg,rgba(5,9,12,.96),rgba(1,2,3,.97));padding:22px 18px;box-shadow:var(--shadow)}.logo{font-size:40px;font-weight:1000;letter-spacing:-2px;color:var(--gold);line-height:.85;margin-bottom:24px}.logo small{display:block;color:white;font-size:13px;letter-spacing:5px;margin-top:9px}.nav a,.quick a,.quick button{width:100%;display:flex;align-items:center;gap:12px;border:0;text-decoration:none;color:white;background:transparent;padding:13px 14px;border-radius:14px;font-weight:800;font-size:15px;cursor:pointer}.nav a.active,.nav a:hover,.quick a:hover,.quick button:hover{background:linear-gradient(90deg,rgba(245,197,66,.9),rgba(183,131,23,.75));color:#111}.quick{margin-top:28px;border:1px solid var(--line);border-radius:18px;padding:12px;background:rgba(255,255,255,.035)}.quick h4{margin:0 0 8px;color:var(--gold);font-size:14px;text-transform:uppercase}.main{padding:20px 24px 90px}.header{text-align:center;position:relative;margin-bottom:17px}.header h1{margin:0;font-size:clamp(28px,4vw,52px);font-weight:1000;letter-spacing:-1.3px}.header h1 span{color:var(--gold)}.header p{margin:7px 0 0;color:#d5d7dc;letter-spacing:2px;font-weight:700;text-transform:uppercase}.admin{position:absolute;right:0;top:0;border:1px solid var(--line);border-radius:999px;padding:10px 16px;background:rgba(255,255,255,.04);font-weight:900}.panel{border:1px solid var(--line);background:linear-gradient(180deg,rgba(17,24,32,.86),rgba(4,8,12,.91));border-radius:var(--radius);box-shadow:var(--shadow)}.dashboard{display:grid;grid-template-columns:1fr 310px;gap:16px}.center{padding:16px}.right{display:grid;gap:16px}.alerts{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}.alert{border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:12px;background:linear-gradient(135deg,rgba(245,197,66,.12),rgba(255,255,255,.03));font-weight:900;color:#fff}.alert b{display:block;font-size:20px;color:var(--gold)}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.stat{padding:18px;border:1px solid rgba(255,255,255,.12);border-radius:17px;background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(255,255,255,.02));display:flex;align-items:center;gap:14px;min-height:105px}.ico{font-size:42px;filter:drop-shadow(0 0 10px rgba(255,255,255,.18))}.stat b{font-size:34px;display:block}.stat span{color:var(--muted);font-weight:800;font-size:12px;text-transform:uppercase}.mid{display:grid;grid-template-columns:1fr 1.15fr;gap:14px;margin-top:14px}.level{padding:22px;border-color:rgba(245,197,66,.55)}.level h3,.box h3{margin:0 0 14px;color:white;font-size:17px;text-transform:uppercase}.levelInner{display:flex;align-items:center;gap:22px}.medal{font-size:72px}.levelName{font-size:43px;font-weight:1000;color:#e5e7eb}.progress{height:20px;background:#232a31;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,.12);margin-top:17px}.bar{height:100%;width:var(--w);background:linear-gradient(90deg,var(--gold),#fff29b)}.donutBox{padding:22px}.donutWrap{display:flex;align-items:center;justify-content:center;gap:28px}.donut{width:185px;height:185px;border-radius:50%;background:conic-gradient(var(--green) 0 calc(var(--p)*1%), var(--red) calc(var(--p)*1%) 100%);display:grid;place-items:center}.donutIn{width:105px;height:105px;border-radius:50%;background:#081018;display:grid;place-items:center;text-align:center;border:1px solid rgba(255,255,255,.15)}.donutIn b{font-size:29px}.legend div{margin:10px 0}.sq{display:inline-block;width:14px;height:14px;border-radius:4px;margin-right:8px;vertical-align:-2px}.g{background:var(--green)}.r{background:var(--red)}.bottomGrid{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-top:14px}.box{padding:18px}.miniTable{width:100%;border-collapse:collapse}.miniTable th,.miniTable td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}.miniTable th{font-size:12px;color:#cbd5e1;text-transform:uppercase}.activo{color:#46ff60}.inactivo{color:#ff453a}.gold{color:var(--gold)}.infoCard{padding:20px}.infoCard h3{margin:0 0 12px;text-align:center;text-transform:uppercase}.infoCard ul{margin:0;padding-left:0;list-style:none}.infoCard li{margin:11px 0;color:#e4e8ee}.ok{color:#65e572}.mysql{font-size:36px;color:#70e45c;font-weight:1000}.formAdd{margin-top:16px;padding:16px;display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr auto;gap:12px;align-items:end}.levels{margin-top:16px;padding:16px}.levelGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.levelCard{position:relative;overflow:hidden;padding:18px;border-radius:20px;border:1px solid rgba(255,255,255,.13);min-height:170px;background:#070b12}.levelCard:before{content:"";position:absolute;inset:-70px -40px auto auto;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.22),transparent 65%)}.levelCard:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.12) 45%,transparent 65%);transform:translateX(-120%);animation:shine 5s infinite}@keyframes shine{0%,55%{transform:translateX(-130%)}75%,100%{transform:translateX(130%)}}.levelIcon{font-size:44px}.levelCard h3{margin:8px 0 4px;font-size:22px}.levelCard p{margin:0;color:#d7dce5}.levelPrices{display:flex;gap:6px;margin-top:12px}.levelPrices span{flex:1;text-align:center;border-radius:12px;padding:8px 4px;background:rgba(0,0,0,.25);font-weight:900}.lv-cobre{background:linear-gradient(135deg,rgba(184,96,34,.45),rgba(70,36,16,.55))}.lv-plata{background:linear-gradient(135deg,rgba(226,232,240,.38),rgba(76,88,105,.48))}.lv-oro{background:linear-gradient(135deg,rgba(245,197,66,.45),rgba(92,62,5,.55))}.lv-platinum{background:linear-gradient(135deg,rgba(45,212,191,.35),rgba(31,182,255,.22),rgba(139,92,246,.22))}input,select,textarea{width:100%;background:#050914;color:white;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:13px;outline:none;font:inherit}input:focus,textarea:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(245,197,66,.1)}label{display:block;color:#d8dee8;font-weight:900;font-size:12px;margin-bottom:7px}.btn{border:0;border-radius:14px;padding:13px 16px;min-height:47px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#111;font-weight:1000;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn.dark{background:#111823;color:white;border:1px solid rgba(255,255,255,.14)}.btn.green{background:linear-gradient(135deg,#30df73,#16bfb3);color:white}.btn.red{background:linear-gradient(135deg,#ff5c5c,#c41235);color:white}.btn.small{min-height:38px;padding:9px 11px;font-size:13px}.notice{margin:12px 0;padding:13px 16px;border:1px solid rgba(53,208,79,.45);background:rgba(53,208,79,.12);border-radius:16px;color:#bbf7d0;font-weight:900}.clientTools{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:20px 0 12px}.searchBox{max-width:420px}.clients{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.client{padding:16px;position:relative;overflow:hidden}.client:before{content:"";position:absolute;right:-40px;top:-40px;width:130px;height:130px;border-radius:50%;background:radial-gradient(circle,rgba(245,197,66,.18),transparent 68%)}.client h3{margin:0 0 6px;font-size:22px}.badge{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:7px 10px;background:rgba(245,197,66,.08);font-weight:1000}.prices{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.price{padding:9px;border-radius:12px;background:#050914;border:1px solid rgba(255,255,255,.08);text-align:center}.price b{display:block;color:var(--gold);font-size:19px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.metric{padding:10px;background:#050914;border:1px solid rgba(255,255,255,.08);border-radius:12px;text-align:center}.metric b{display:block;font-size:21px}.note{font-size:13px;color:#dbeafe;background:rgba(255,255,255,.045);border-radius:12px;padding:10px;min-height:42px}.miniProgress{margin-top:10px}.miniProgress small{display:flex;justify-content:space-between;color:#cbd5e1;margin-bottom:5px}.miniBar{height:10px;border-radius:999px;background:#222b34;overflow:hidden}.miniBar span{display:block;height:100%;width:var(--w);background:linear-gradient(90deg,var(--gold),#fff29b)}.expiryList{display:grid;gap:8px}.expiry{display:flex;justify-content:space-between;gap:10px;align-items:center;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px}.expiry b{color:var(--gold)}.rankCards{display:grid;gap:9px}.rankCard{display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:11px}.rankCard strong{font-size:17px}.modal{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.78);backdrop-filter:blur(10px);padding:25px;overflow:auto}.modal.open{display:block}.sheet{max-width:1080px;margin:auto}.sheetHead{padding:17px;display:flex;justify-content:space-between;gap:12px;align-items:center;position:sticky;top:0;z-index:2}.sheetHead h2{margin:0;font-size:32px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.tabs a{padding:9px 12px;border-radius:999px;background:#050914;border:1px solid rgba(255,255,255,.12);text-decoration:none;font-weight:900}.modalBody{display:grid;grid-template-columns:360px 1fr;gap:14px;margin-top:14px}.refList{display:grid;gap:10px}.ref{padding:13px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:#080e16}.refTop{display:flex;justify-content:space-between;gap:8px}.status{padding:6px 9px;border-radius:999px;font-weight:1000;font-size:12px}.status.act{background:rgba(53,208,79,.15);color:#87ff97}.status.in{background:rgba(255,59,48,.15);color:#ff9b94}.refActions{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.editBox{display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1)}.ref.edit .editBox{display:block}.mobileNav{display:none}@media(max-width:1200px){.dashboard{grid-template-columns:1fr}.right{grid-template-columns:repeat(3,1fr)}.clients{grid-template-columns:repeat(2,1fr)}}@media(max-width:980px){.app{grid-template-columns:1fr}.sidebar{display:none}.header{text-align:left}.admin{position:static;display:inline-flex;margin-bottom:10px}.alerts,.stats,.mid,.bottomGrid,.formAdd,.levelGrid,.right,.clients,.modalBody{grid-template-columns:1fr}.donutWrap{flex-direction:column}.clientTools{display:block}.searchBox{max-width:100%;margin-top:10px}}@media(max-width:760px){.main{padding:12px 10px 90px}.header h1{font-size:27px}.header p{font-size:11px;letter-spacing:1px}.panel{border-radius:18px}.modal{padding:0}.sheet{min-height:100dvh;border-radius:0}.sheetHead{border-radius:0}.refActions{grid-template-columns:1fr}.mobileNav{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;bottom:0;left:0;right:0;background:rgba(3,4,5,.95);backdrop-filter:blur(16px);border-top:1px solid var(--line);z-index:20}.mobileNav a{padding:10px 5px;text-align:center;text-decoration:none;color:white;font-size:12px;font-weight:900}.stat{min-height:88px}.ico{font-size:34px}}
+
+/* =========================
+   MDPRIME MOBILE APP PRO FIX
+   ========================= */
+@media(max-width:760px){
+  html,body{
+    width:100%!important;
+    max-width:100%!important;
+    overflow-x:hidden!important;
+    background:#020304!important;
+  }
+
+  body:before{
+    background:
+      radial-gradient(circle at 50% -5%,rgba(245,197,66,.20),transparent 32%),
+      radial-gradient(circle at 100% 18%,rgba(31,182,255,.14),transparent 28%),
+      linear-gradient(180deg,#030405 0%,#071018 42%,#030405 100%)!important;
+  }
+
+  .app{
+    display:block!important;
+    width:100%!important;
+    max-width:100%!important;
+    padding:0!important;
+    margin:0!important;
+  }
+
+  .sidebar,.rightRail{
+    display:none!important;
+  }
+
+  .main{
+    padding:10px 10px 88px!important;
+    width:100%!important;
+    max-width:100%!important;
+    overflow-x:hidden!important;
+  }
+
+  .header{
+    text-align:left!important;
+    margin:0 0 12px!important;
+    padding:16px 14px!important;
+    border:1px solid rgba(245,197,66,.28)!important;
+    border-radius:22px!important;
+    background:
+      radial-gradient(circle at 90% 10%,rgba(245,197,66,.20),transparent 35%),
+      linear-gradient(135deg,rgba(17,24,32,.94),rgba(4,8,12,.96))!important;
+    box-shadow:0 16px 45px rgba(0,0,0,.45)!important;
+  }
+
+  .header h1{
+    font-size:24px!important;
+    line-height:1.02!important;
+    letter-spacing:-.8px!important;
+    margin-top:8px!important;
+  }
+
+  .header p{
+    font-size:10px!important;
+    line-height:1.35!important;
+    letter-spacing:.7px!important;
+    margin-top:8px!important;
+  }
+
+  .admin{
+    position:static!important;
+    display:inline-flex!important;
+    padding:7px 11px!important;
+    font-size:12px!important;
+    margin:0!important;
+  }
+
+  .panel{
+    border-radius:20px!important;
+    box-shadow:0 14px 42px rgba(0,0,0,.42)!important;
+    max-width:100%!important;
+    overflow:hidden!important;
+  }
+
+  .dashboard{
+    display:block!important;
+  }
+
+  .center{
+    padding:12px!important;
+  }
+
+  .alerts{
+    display:grid!important;
+    grid-template-columns:1fr 1fr!important;
+    gap:8px!important;
+    margin-bottom:10px!important;
+  }
+
+  .alert{
+    min-height:74px!important;
+    padding:11px!important;
+    border-radius:16px!important;
+    font-size:12px!important;
+    line-height:1.22!important;
+  }
+
+  .alert b{
+    font-size:23px!important;
+    margin-top:3px!important;
+  }
+
+  .stats{
+    grid-template-columns:1fr 1fr!important;
+    gap:8px!important;
+  }
+
+  .stat{
+    min-height:92px!important;
+    padding:12px!important;
+    border-radius:17px!important;
+    display:flex!important;
+    align-items:center!important;
+    gap:10px!important;
+  }
+
+  .ico,.statIcon{
+    width:38px!important;
+    height:38px!important;
+    font-size:25px!important;
+    margin:0!important;
+    flex:0 0 auto!important;
+  }
+
+  .stat b{
+    font-size:27px!important;
+  }
+
+  .stat span{
+    font-size:10px!important;
+    line-height:1.15!important;
+  }
+
+  .mid,.bottomGrid,.formAdd,.levelGrid,.clients,.clientsGrid,.modalBody,.visualGrid,.tableGrid,.right{
+    grid-template-columns:1fr!important;
+    display:grid!important;
+    gap:10px!important;
+  }
+
+  .level,.levelCard,.donutBox,.donutCard,.box,.tableCard,.formCard,.levels,.levelsCard,.infoCard{
+    padding:13px!important;
+    border-radius:19px!important;
+    width:100%!important;
+    max-width:100%!important;
+  }
+
+  .levelInner,.levelBig{
+    gap:12px!important;
+  }
+
+  .medal{
+    width:58px!important;
+    height:58px!important;
+    font-size:34px!important;
+    flex:0 0 auto!important;
+  }
+
+  .levelName{
+    font-size:27px!important;
+    line-height:1!important;
+    word-break:break-word!important;
+  }
+
+  .progress,.miniBar{
+    height:12px!important;
+  }
+
+  .donutWrap{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    text-align:center!important;
+    gap:10px!important;
+  }
+
+  .donut{
+    width:148px!important;
+    height:148px!important;
+    margin:0 auto!important;
+  }
+
+  .donutInner,.donutIn{
+    width:88px!important;
+    height:88px!important;
+  }
+
+  .donutInner b,.donutIn b{
+    font-size:24px!important;
+  }
+
+  .legend,.legendItem{
+    justify-content:center!important;
+    font-size:13px!important;
+  }
+
+  .miniTable{
+    font-size:12px!important;
+  }
+
+  .miniTable th,.miniTable td,table th,table td{
+    padding:8px 6px!important;
+    font-size:12px!important;
+  }
+
+  .tableCard{
+    overflow-x:auto!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+
+  .formAdd{
+    padding:13px!important;
+    margin-top:10px!important;
+  }
+
+  input,select,textarea{
+    font-size:16px!important;
+    padding:13px 12px!important;
+    border-radius:14px!important;
+    max-width:100%!important;
+  }
+
+  textarea{
+    min-height:88px!important;
+  }
+
+  .btn{
+    width:100%!important;
+    min-height:50px!important;
+    border-radius:15px!important;
+    padding:12px!important;
+    font-size:14px!important;
+    white-space:normal!important;
+  }
+
+  .levelGrid,.levelsMini{
+    grid-template-columns:1fr!important;
+  }
+
+  .levelCard{
+    min-height:132px!important;
+  }
+
+  .levelIcon{
+    font-size:38px!important;
+  }
+
+  .levelCard h3{
+    font-size:22px!important;
+  }
+
+  .levelPrices{
+    gap:7px!important;
+  }
+
+  .levelPrices span{
+    padding:9px 4px!important;
+    font-size:13px!important;
+  }
+
+  .clientTools,.clientsHeader{
+    display:block!important;
+    margin:14px 0 10px!important;
+  }
+
+  .clientTools h2,.clientsHeader h2{
+    font-size:22px!important;
+    margin-bottom:8px!important;
+  }
+
+  .searchBox,.search{
+    max-width:100%!important;
+    margin-top:8px!important;
+  }
+
+  .client{
+    padding:14px!important;
+    border-radius:20px!important;
+    width:100%!important;
+    max-width:100%!important;
+    overflow:hidden!important;
+  }
+
+  .clientTop{
+    align-items:flex-start!important;
+    gap:8px!important;
+  }
+
+  .clientName,.client h3{
+    font-size:21px!important;
+    line-height:1.05!important;
+    word-break:break-word!important;
+  }
+
+  .clientContact,.muted{
+    font-size:12px!important;
+    word-break:break-word!important;
+  }
+
+  .badge{
+    font-size:12px!important;
+    padding:7px 9px!important;
+    white-space:nowrap!important;
+  }
+
+  .metrics,.clientMetrics,.prices,.priceRow{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+
+  .metric,.cm,.price{
+    padding:8px 4px!important;
+    border-radius:12px!important;
+    min-width:0!important;
+  }
+
+  .metric b,.cm b,.price b{
+    font-size:17px!important;
+  }
+
+  .metric span,.cm span,.price span{
+    font-size:10px!important;
+  }
+
+  .note{
+    font-size:12px!important;
+    line-height:1.35!important;
+  }
+
+  .clientActions{
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+  }
+
+  .expiry,.rankCard{
+    padding:10px!important;
+    border-radius:14px!important;
+    font-size:13px!important;
+  }
+
+  .modal{
+    padding:0!important;
+    overflow:hidden!important;
+    touch-action:pan-y!important;
+  }
+
+  .modal.open{
+    display:block!important;
+  }
+
+  .sheet,.modalSheet{
+    width:100vw!important;
+    max-width:100vw!important;
+    height:100dvh!important;
+    min-height:100dvh!important;
+    margin:0!important;
+    border-radius:0!important;
+    border:0!important;
+    overflow:hidden!important;
+    display:flex!important;
+    flex-direction:column!important;
+  }
+
+  .sheetHead,.modalHead{
+    flex:0 0 auto!important;
+    position:sticky!important;
+    top:0!important;
+    z-index:5!important;
+    padding:12px!important;
+    border-radius:0!important;
+    background:linear-gradient(135deg,rgba(17,24,32,.98),rgba(4,8,12,.98))!important;
+    backdrop-filter:blur(16px)!important;
+  }
+
+  .sheetHead h2,.modalTitle h2{
+    font-size:21px!important;
+    line-height:1.05!important;
+    word-break:break-word!important;
+    max-width:72vw!important;
+  }
+
+  .modalTitle{
+    align-items:flex-start!important;
+  }
+
+  .closeBtn,.sheetHead > button{
+    width:44px!important;
+    height:44px!important;
+    min-height:44px!important;
+    padding:0!important;
+    border-radius:999px!important;
+    flex:0 0 auto!important;
+  }
+
+  .tabs,.modalTabs{
+    display:flex!important;
+    gap:7px!important;
+    overflow-x:auto!important;
+    padding-bottom:4px!important;
+    scrollbar-width:none!important;
+  }
+
+  .tabs::-webkit-scrollbar,.modalTabs::-webkit-scrollbar{
+    display:none!important;
+  }
+
+  .tabs a,.modalTabs a{
+    flex:0 0 auto!important;
+    font-size:12px!important;
+    padding:9px 11px!important;
+    border-radius:999px!important;
+  }
+
+  .modalBody{
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    padding:12px 12px 92px!important;
+    width:100%!important;
+    max-width:100%!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+
+  .ref,.refCard{
+    border-radius:16px!important;
+    padding:12px!important;
+    width:100%!important;
+    max-width:100%!important;
+  }
+
+  .refTop{
+    align-items:flex-start!important;
+  }
+
+  .refName{
+    font-size:16px!important;
+    word-break:break-word!important;
+  }
+
+  .status,.estado{
+    font-size:11px!important;
+    padding:6px 8px!important;
+    white-space:nowrap!important;
+  }
+
+  .refDates{
+    grid-template-columns:1fr!important;
+    gap:5px!important;
+    font-size:12px!important;
+  }
+
+  .refActions{
+    grid-template-columns:1fr!important;
+    gap:7px!important;
+  }
+
+  .editBox .modalGrid{
+    grid-template-columns:1fr!important;
+  }
+
+  .full{
+    grid-column:1!important;
+  }
+
+  .mobileNav{
+    display:grid!important;
+    grid-template-columns:repeat(4,1fr)!important;
+    position:fixed!important;
+    left:8px!important;
+    right:8px!important;
+    bottom:8px!important;
+    z-index:2000!important;
+    border:1px solid rgba(245,197,66,.32)!important;
+    background:rgba(3,4,5,.94)!important;
+    backdrop-filter:blur(18px)!important;
+    border-radius:22px!important;
+    padding:7px!important;
+    box-shadow:0 18px 50px rgba(0,0,0,.65)!important;
+  }
+
+  .mobileNav a{
+    text-decoration:none!important;
+    color:white!important;
+    text-align:center!important;
+    font-size:11px!important;
+    font-weight:900!important;
+    padding:8px 4px!important;
+    border-radius:15px!important;
+  }
+
+  .mobileNav a.active,.mobileNav a:hover{
+    background:linear-gradient(135deg,var(--gold),var(--gold2))!important;
+    color:#111!important;
+  }
+}
+
+/* Evita que cualquier elemento fuerce scroll lateral */
+@media(max-width:760px){
+  *{
+    max-width:100%;
+  }
+}
+
+
+
+/* ===== FIX SCROLL MODAL MÓVIL SAFARI/IPHONE ===== */
+@media(max-width:760px){
+  html,body{
+    overflow-x:hidden!important;
+  }
+  .modal,
+  .modal.open{
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior:contain!important;
+  }
+  .sheet,
+  .modalSheet{
+    height:100dvh!important;
+    min-height:100dvh!important;
+    max-height:100dvh!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  .modalBody{
+    display:block!important;
+    height:auto!important;
+    min-height:calc(100dvh - 150px)!important;
+    max-height:none!important;
+    overflow-y:visible!important;
+    overflow-x:hidden!important;
+    padding-bottom:130px!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  .sheetHead,
+  .modalHead{
+    position:sticky!important;
+    top:0!important;
+    z-index:999!important;
+    flex:0 0 auto!important;
+  }
+  .modalBody > aside,
+  .modalBody > section,
+  .modalBody > .panel{
+    margin-bottom:12px!important;
+  }
+}
+
+
+
+/* ===== MDPRIME DUPLICADOS REFERIDOS ===== */
+.duplicadosPanel{margin:16px 0;padding:16px;border:1px solid rgba(245,197,66,.36);background:linear-gradient(180deg,rgba(31,23,8,.90),rgba(6,8,12,.94));border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+.duplicadosHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.duplicadosHead h2{margin:0;font-size:24px}.duplicadosBadge{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:9px 13px;background:rgba(245,197,66,.14);border:1px solid rgba(245,197,66,.38);color:#fde68a;font-weight:1000}.duplicadosGrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.duplicadoCard{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);border-radius:18px;padding:13px}.duplicadoTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.duplicadoNombre{font-size:19px;font-weight:1000;color:#fff}.duplicadoMeta{color:#cbd5e1;font-size:13px;margin-top:5px;line-height:1.35}.duplicadoAlert{padding:7px 10px;border-radius:999px;background:rgba(245,197,66,.18);color:#fde68a;font-weight:1000;font-size:12px;white-space:nowrap}.duplicadoDetalles{display:grid;gap:7px;margin-top:10px}.duplicadoLinea{padding:10px;border-radius:13px;background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.08);font-size:13px;color:#e5e7eb}.duplicadoLinea b{color:#f5c542}.duplicadoOk{padding:14px;border-radius:16px;background:rgba(53,208,79,.12);border:1px solid rgba(53,208,79,.35);color:#bbf7d0;font-weight:1000}
+@media(max-width:980px){.duplicadosGrid{grid-template-columns:1fr}}
+@media(max-width:760px){.duplicadosHead{display:block}.duplicadosBadge{margin-top:8px}.duplicadoTop{display:block}.duplicadoAlert{display:inline-flex;margin-top:8px}}
+
+/* ===== CLIENTES NORMALES MDPRIME ===== */
+.normalesPanel{margin:16px 0;padding:16px;border:1px solid rgba(31,182,255,.32);background:linear-gradient(180deg,rgba(12,25,36,.90),rgba(4,8,12,.94));border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+.normalesHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.normalesHead h2{margin:0;font-size:24px}.normalesBadge{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:9px 13px;background:rgba(31,182,255,.14);border:1px solid rgba(31,182,255,.38);color:#bae6fd;font-weight:1000}
+.normalesForm{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:9px;align-items:end;margin:12px 0}.normalesGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.normalCard{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);border-radius:18px;padding:13px;overflow:visible!important}.normalTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.normalNombre{font-size:18px;font-weight:1000}.normalMeta{color:#cbd5e1;font-size:13px;margin-top:5px;line-height:1.35}.normalActions{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:10px}.normalEdit{display:none;margin-top:10px;padding:12px;border-top:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.18);border-radius:14px}.normalCard.editing .normalEdit{display:block}
+@media(max-width:980px){.normalesGrid{grid-template-columns:1fr 1fr}.normalesForm{grid-template-columns:1fr 1fr}}@media(max-width:760px){.normalesHead{display:block}.normalesBadge{margin-top:8px}.normalesGrid,.normalesForm{grid-template-columns:1fr!important}.normalActions{grid-template-columns:1fr!important}}
+
+/* ===== BUSCADOR CLIENTES NORMALES V10 ===== */
+.normalesSearchBox{
+  margin:14px 0 14px;
+  padding:13px;
+  border:1px solid rgba(31,182,255,.28);
+  background:rgba(0,0,0,.18);
+  border-radius:18px;
+}
+.normalesSearchGrid{
+  display:grid;
+  grid-template-columns:1.5fr auto auto auto auto;
+  gap:8px;
+  align-items:end;
+}
+.normalesSearchBox input{
+  width:100%;
+}
+.normalFilterBtn{
+  border:1px solid rgba(255,255,255,.14)!important;
+  background:#111823!important;
+  color:#fff!important;
+}
+.normalFilterBtn.active{
+  background:linear-gradient(135deg,#1fb6ff,#32d3c6)!important;
+  color:#031018!important;
+}
+.normalNoResults{
+  display:none;
+  margin-top:10px;
+  padding:12px;
+  border-radius:14px;
+  background:rgba(255,59,48,.12);
+  border:1px solid rgba(255,59,48,.28);
+  color:#fecaca;
+  font-weight:1000;
+}
+.normalNoResults.show{display:block}
+@media(max-width:980px){
+  .normalesSearchGrid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:760px){
+  .normalesSearchGrid{grid-template-columns:1fr!important}
+}
+</style>
+<style id="mdPerfilReferenteSoloCss">
+.clientMainActions{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.clientMainActions form{margin:0}
+.clientMainActions form .btn{width:100%;height:100%}
+.perfilReferenteBox{display:none;margin-top:12px;padding:14px;border:1px solid rgba(245,197,66,.30);background:linear-gradient(135deg,rgba(245,197,66,.10),rgba(255,255,255,.035));border-radius:18px}
+.perfilReferenteBox.open{display:block!important}
+.perfilReferenteHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.perfilReferenteHead h3{margin:0}
+.btnXPerfil{width:42px!important;min-height:42px!important;padding:0!important;border-radius:999px!important}
+.tgRefLink{color:#7dd3fc;text-decoration:none;font-weight:1000}
+.tgRefLink:hover{text-decoration:underline}
+.btnTelegramRef{background:linear-gradient(135deg,#229ED9,#1d6fd6)!important;color:white!important;border:0!important}
+.btnTelegramRef.off{background:#111823!important;color:#94a3b8!important;border:1px solid rgba(255,255,255,.14)!important;cursor:not-allowed!important;opacity:.72}
+@media(max-width:760px){.clientMainActions{grid-template-columns:1fr!important}.perfilReferenteBox{padding:12px!important}}
+</style>
+
+<style id="mdBuscadorReferidosCss">
+.quickRefSearch{margin:16px 0;padding:16px;border:1px solid rgba(245,197,66,.30);background:linear-gradient(180deg,rgba(17,24,32,.86),rgba(4,8,12,.91));border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+.quickRefSearch h2{margin:0 0 10px;font-size:24px}
+.quickRefResults{display:grid;gap:10px;margin-top:12px}
+.quickRefCard{display:none;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);border-radius:18px;padding:13px}
+.quickRefCard.show{display:block}
+.quickRefTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.quickRefName{font-size:18px;font-weight:1000}
+.quickRefMeta{color:#cbd5e1;font-size:13px;margin-top:4px}
+.quickRefActions{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:10px}
+.quickRefEdit{display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.12)}
+.quickRefCard.editing .quickRefEdit{display:grid;gap:8px}
+.quickRefEditHead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.quickRefEditHead h3{margin:0}
+.quickRefEmpty{display:none;color:#cbd5e1;background:rgba(255,255,255,.05);border-radius:14px;padding:12px;margin-top:10px}
+.quickRefEmpty.show{display:block}
+@media(max-width:760px){
+  .quickRefActions{grid-template-columns:1fr!important}
+  .quickRefTop{display:block!important}
+}
+
+/* ===== MDPRIME INACTIVOS PRO ===== */
+.inactivosPanel{margin:16px 0;padding:16px;border:1px solid rgba(255,59,48,.32);background:linear-gradient(180deg,rgba(32,17,17,.88),rgba(12,4,4,.92));border-radius:22px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+.inactivosHead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.inactivosHead h2{margin:0;font-size:24px}
+.inactivosBadge{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:9px 13px;background:rgba(255,59,48,.15);border:1px solid rgba(255,59,48,.35);color:#fecaca;font-weight:1000}
+.inactivosGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.inactivoCard{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);border-radius:18px;padding:13px}
+.inactivoTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.inactivoNombre{font-size:18px;font-weight:1000}
+.inactivoMeta{color:#cbd5e1;font-size:13px;margin-top:5px;line-height:1.35}
+.inactivoRef{color:#f5c542;font-weight:1000}
+.inactivoEstado{padding:6px 9px;border-radius:999px;background:rgba(255,59,48,.15);color:#fecaca;font-weight:1000;font-size:12px;white-space:nowrap}
+.inactivoActions{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-top:10px}
+.inactivoFechaEdit{display:none;margin-top:10px;padding:12px;border-top:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.18);border-radius:14px}
+.inactivoFechaEdit.open{display:block}
+.inactivoFechaEdit form{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.inactivoFechaEdit label{margin:0 0 6px}
+.mdPagination{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0 4px}
+.mdPaginationInfo{padding:10px 14px;border-radius:999px;border:1px solid rgba(245,197,66,.28);background:rgba(255,255,255,.045);color:#dbeafe;font-weight:1000}
+.mdPagination .btn.disabled{opacity:.45;pointer-events:none;filter:grayscale(1)}
+@media(max-width:980px){.inactivosGrid{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.inactivosHead{display:block}.inactivosBadge{margin-top:8px}.inactivosGrid{grid-template-columns:1fr}.inactivoActions{grid-template-columns:1fr!important}.inactivoFechaEdit form{grid-template-columns:1fr!important}}
+</style>
+
+<style id="mdprimeHoverBotonesRealFinal">
+/* ===== MDPRIME FIX REAL: BOTONES IGUALES + AUMENTO AL PASAR RATÓN ===== */
+.client,
+.inactivoCard,
+.quickRefCard,
+.ref{
+  overflow:visible!important;
+}
+.clientMainActions,
+.inactivoActions,
+.quickRefActions,
+.refActions{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:8px!important;
+  align-items:stretch!important;
+  overflow:visible!important;
+}
+.clientMainActions form,
+.inactivoActions form,
+.quickRefActions form,
+.refActions form{
+  margin:0!important;
+  width:100%!important;
+  height:100%!important;
+  display:flex!important;
+  overflow:visible!important;
+}
+.clientMainActions .btn,
+.inactivoActions .btn,
+.quickRefActions .btn,
+.refActions .btn{
+  width:100%!important;
+  min-width:0!important;
+  height:58px!important;
+  min-height:58px!important;
+  padding:8px 7px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  font-size:13px!important;
+  font-weight:1000!important;
+  line-height:1.12!important;
+  white-space:normal!important;
+  border-radius:14px!important;
+  position:relative!important;
+  z-index:1!important;
+  transform:scale(1)!important;
+  transform-origin:center center!important;
+  transition:transform .18s ease, box-shadow .18s ease, filter .18s ease!important;
+  will-change:transform!important;
+}
+.clientMainActions .btn:hover,
+.inactivoActions .btn:hover,
+.quickRefActions .btn:hover,
+.refActions .btn:hover{
+  transform:scale(1.10)!important;
+  z-index:999!important;
+  filter:brightness(1.10)!important;
+  box-shadow:0 16px 38px rgba(0,0,0,.62), 0 0 20px rgba(245,197,66,.28)!important;
+}
+.clientMainActions form:hover,
+.inactivoActions form:hover,
+.quickRefActions form:hover,
+.refActions form:hover{
+  z-index:999!important;
+}
+@media(max-width:760px){
+  .clientMainActions,
+  .inactivoActions,
+  .quickRefActions,
+  .refActions{
+    grid-template-columns:1fr!important;
+  }
+  .clientMainActions .btn,
+  .inactivoActions .btn,
+  .quickRefActions .btn,
+  .refActions .btn{
+    height:52px!important;
+    min-height:52px!important;
+    font-size:14px!important;
+  }
+}
+</style>
+</head><body>
+<div class="app"><aside class="sidebar"><div class="logo">MD<small>PRIME</small></div><nav class="nav"><a class="active" href="#dashboard">🏠 Dashboard</a><a href="#clientes">👥 Clientes</a><a href="#referidos">👥 Referidos</a><a href="#duplicados">🔁 Repetidos</a><a href="#inactivos">❌ Inactivos</a><a href="#addCliente">➕ Añadir Cliente</a><a href="#ranking">🏆 Ranking</a><a href="#niveles">🛡️ Niveles</a><a href="#caducidades">📅 Caducidades</a></nav><div class="quick"><h4>Acceso rápido</h4><a href="#addCliente">👤 Añadir Cliente</a><a href="#ranking">🏆 Ver Ranking</a><form method="post"><input type="hidden" name="action" value="export_json"><button>💾 Exportar Backup</button></form></div></aside><main class="main"><header class="header"><div class="admin">🔒 Privado · <a href="?logout=1" style="color:#f5c542;text-decoration:none">Salir</a></div><h1>PANEL DE REFERIDOS <span>MDPRIME</span></h1><p>Sistema profesional de gestión de clientes y referidos</p></header><?php if($msg): ?><div class="notice"><?=h($msg)?></div><?php endif; ?>
+<section class="dashboard" id="dashboard"><div class="center panel"><div class="alerts"><div class="alert">⚠️ Caducan en 3 días <b><?= $caducan7 ?></b></div><div class="alert">🔁 Repetidos <b><?= $totalDuplicadosReferidos ?></b></div><div class="alert">🏆 Cerca de subir <b><?= $nearUpgrade ?></b></div><div class="alert">💎 Platinum <b><?= $platinumCount ?></b></div><div class="alert">📊 Controlados <b><?= $totalRefs ?></b></div></div><div class="stats"><div class="stat"><div class="ico">👤</div><div><b><?= $totalClientes ?></b><span>Clientes totales</span></div></div><div class="stat"><div class="ico">👥</div><div><b><?= $totalRefs ?></b><span>Referidos totales</span></div></div><div class="stat"><div class="ico">✅</div><div><b><?= $totalActivos ?></b><span>Activos <?= $totalRefs? '('.$pctAct.'%)':'' ?></span></div></div><div class="stat"><div class="ico">❌</div><div><b><?= $totalInactivos ?></b><span>Inactivos <?= $totalRefs? '('.(100-$pctAct).'%)':'' ?></span></div></div></div><div class="mid"><div class="level panel"><h3>Nivel actual destacado</h3><div class="levelInner"><div class="medal"><?= $topNivel['icon'] ?></div><div><div class="levelName"><?= h($topNivel['nivel']) ?></div><div><?= $top ? h($top['nombre']).' · '.(int)$top['activos'].' referidos activos' : 'Sin clientes todavía' ?></div></div></div><div style="margin-top:16px;color:#e7edf5"><?= $next ? 'Siguiente nivel: '.h($next['nivel']).' ('.(int)$next['min_activos'].' activos)' : 'Nivel máximo alcanzado' ?></div><div class="progress"><div class="bar" style="--w:<?= $progress ?>%"></div></div></div><div class="donutBox panel"><h3>Referidos por estado</h3><div class="donutWrap"><div class="donut" style="--p:<?= $pctAct ?>"><div class="donutIn"><div><b><?= $totalRefs ?></b><br><span>Total</span></div></div></div><div class="legend"><div><span class="sq g"></span> Activos: <?= $totalActivos ?> <?= $totalRefs?'('.$pctAct.'%)':'' ?></div><div><span class="sq r"></span> Inactivos: <?= $totalInactivos ?> <?= $totalRefs?'('.(100-$pctAct).'%)':'' ?></div></div></div></div></div><div class="bottomGrid"><div class="box panel" id="referidos"><h3>Últimos referidos</h3><table class="miniTable"><thead><tr><th>Nombre</th><th>Fecha</th><th>Estado</th><th>Cliente</th></tr></thead><tbody><?php foreach($latest as $r): ?><tr><td><?=h($r['nombre'])?></td><td><?=h($r['fecha_alta'] ?: '-')?></td><td class="<?= $r['estado']==='Activo'?'activo':'inactivo' ?>"><?=h($r['estado'])?></td><td><?=h($r['cliente_nombre'])?></td></tr><?php endforeach; if(!$latest): ?><tr><td colspan="4">Sin referidos todavía.</td></tr><?php endif; ?></tbody></table></div><div class="box panel" id="ranking"><h3>Ranking visual</h3><div class="rankCards"><?php foreach(array_slice($clientes,0,5) as $i=>$c): ?><div class="rankCard"><div><?= $i==0?'🥇':($i==1?'🥈':($i==2?'🥉':'#'.($i+1))) ?> <strong><?=h($c['nombre'])?></strong></div><span class="gold"><?= (int)$c['activos'] ?> activos</span></div><?php endforeach; if(!$clientes): ?><div class="note">Sin clientes.</div><?php endif; ?></div></div></div></div><aside class="right"><div class="infoCard panel"><h3>Ahora MySQL</h3><div class="mysql">MySQL</div><ul><li><span class="ok">✔</span> Datos seguros y permanentes</li><li><span class="ok">✔</span> Acceso desde cualquier móvil</li><li><span class="ok">✔</span> Niveles automáticos</li></ul></div><div class="infoCard panel" id="caducidades"><h3>Próximas caducidades</h3><div class="expiryList"><?php foreach($soon as $s): ?><div class="expiry"><div><b><?= date('d/m', strtotime($s['fecha_caducidad'])) ?></b><br><?=h($s['nombre'])?></div><span><?=h($s['cliente_nombre'])?></span></div><?php endforeach; if(!$soon): ?><div class="note">Sin caducidades próximas.</div><?php endif; ?></div></div><div class="infoCard panel"><h3>Importación</h3><div style="font-size:50px">🏆</div><h2 style="margin:0"><?= $totalRefs ?> referidos controlados</h2><p class="muted">Clientes, notas, fechas y caducidades guardadas.</p></div></aside></section>
+<form class="formAdd panel" method="post" id="addCliente"><input type="hidden" name="action" value="add_cliente"><div><label>Cliente referente</label><input name="nombre" placeholder="Nombre" required></div><div><label>WhatsApp / Contacto</label><input name="contacto" placeholder="WhatsApp o email"></div><div><label>Telegram referente</label><input name="telegram" placeholder="@usuarioTelegram"></div><div><label>Nota rápida</label><input name="nota" placeholder="Ej: cliente anual, confianza..."></div><button class="btn green">➕ Añadir</button></form>
+<section class="normalesPanel panel" id="clientesNormales"><div class="normalesHead"><h2>👤 CLIENTES NORMALES</h2><span class="normalesBadge">Activos <?=$totalNormalesActivos?> · Inactivos <?=$totalNormalesInactivos?> · Total <?=$totalNormales?></span></div><div class="note">Clientes sin programa de referidos. Precios normales: 3 meses 35€ · 6 meses 55€ · 12 meses 80€.</div>
+
+  <div class="normalesSearchBox">
+    <label>🔎 Buscar cliente normal</label>
+    <div class="normalesSearchGrid">
+      <input id="normalSearchInput" type="search" placeholder="Escribe nombre, Telegram, WhatsApp o fecha..." oninput="mdFiltrarNormales()">
+      <button type="button" class="btn normalFilterBtn active" data-normal-filter="todos" onclick="mdSetFiltroNormales('todos',this)">Todos</button>
+      <button type="button" class="btn normalFilterBtn" data-normal-filter="activo" onclick="mdSetFiltroNormales('activo',this)">🟢 Activos</button>
+      <button type="button" class="btn normalFilterBtn" data-normal-filter="inactivo" onclick="mdSetFiltroNormales('inactivo',this)">🔴 Inactivos</button>
+      <button type="button" class="btn dark" onclick="mdLimpiarNormales()">❌ Limpiar</button>
+    </div>
+    <div id="normalNoResults" class="normalNoResults">No se encontraron clientes normales con esa búsqueda.</div>
+  </div><form class="normalesForm" method="post"><input type="hidden" name="action" value="add_normal"><div><label>Cliente normal</label><input name="nombre" placeholder="Usuario" required></div><div><label>Contacto</label><input name="contacto" placeholder="WhatsApp o email"></div><div><label>Telegram</label><input name="telegram" placeholder="@usuario"></div><div><label>Alta</label><input type="date" name="fecha_alta" value="<?=$today?>"></div><div><label>Caduca</label><input type="date" name="fecha_caducidad"></div><button class="btn green">➕ Añadir normal</button><div style="grid-column:1/-1"><label>Nota</label><input name="nota" placeholder="Nota privada"></div></form><div class="normalesGrid"><?php foreach($clientesNormales as $cn): $normalActivo=(($cn['estado']??'')==='Activo' && (empty($cn['fecha_caducidad']) || $cn['fecha_caducidad'] >= $today)); ?><article class="normalCard" data-status="<?=$normalActivo?'activo':'inactivo'?>" data-caduca="<?=h($cn['fecha_caducidad'] ?: '')?>" data-search="<?=h(strtolower(($cn['nombre']??'').' '.($cn['telegram']??'').' '.($cn['contacto']??'').' '.($cn['telefono']??'').' '.($cn['estado']??'').' '.($cn['fecha_caducidad']??'')))?>"><div class="normalTop"><div><div class="normalNombre"><?=h($cn['nombre'])?></div><div class="normalMeta">Alta: <?=h($cn['fecha_alta'] ?: '-')?> · Caduca: <?=h($cn['fecha_caducidad'] ?: 'Sin fecha')?></div><div class="normalMeta">Telegram: <?=!empty($cn['telegram'])?'@'.h($cn['telegram']):'Sin Telegram'?> · Contacto: <?=h(($cn['contacto'] ?: $cn['telefono']) ?: '-')?></div><div class="normalMeta"><?= $cn['nota'] ? h($cn['nota']) : 'Sin nota' ?></div></div><span class="status <?=$normalActivo?'act':'in'?>"><?=$normalActivo?'Activo':'Inactivo'?></span></div><div class="normalActions"><button class="btn dark small" type="button" onclick="this.closest('.normalCard').classList.toggle('editing')">Editar</button><form method="post"><input type="hidden" name="action" value="renew_normal"><input type="hidden" name="normal_id" value="<?=$cn['id']?>"><input type="hidden" name="months" value="3"><button class="btn green small">+3 Meses</button></form><form method="post"><input type="hidden" name="action" value="renew_normal"><input type="hidden" name="normal_id" value="<?=$cn['id']?>"><input type="hidden" name="months" value="6"><button class="btn green small">+6 Meses</button></form><form method="post"><input type="hidden" name="action" value="renew_normal"><input type="hidden" name="normal_id" value="<?=$cn['id']?>"><input type="hidden" name="months" value="12"><button class="btn green small">+12 Meses</button></form><form method="post"><input type="hidden" name="action" value="toggle_normal"><input type="hidden" name="normal_id" value="<?=$cn['id']?>"><button class="btn small">Activo/Inactivo</button></form></div><div class="normalEdit"><form method="post" style="display:grid;gap:8px"><input type="hidden" name="action" value="update_normal"><input type="hidden" name="normal_id" value="<?=$cn['id']?>"><label>Nombre</label><input name="nombre" value="<?=h($cn['nombre'])?>" required><label>Contacto</label><input name="contacto" value="<?=h($cn['contacto'] ?: $cn['telefono'])?>"><label>Telegram</label><input name="telegram" value="<?=h($cn['telegram'])?>"><label>Alta</label><input type="date" name="fecha_alta" value="<?=h($cn['fecha_alta'])?>"><label>Caduca</label><input type="date" name="fecha_caducidad" value="<?=h($cn['fecha_caducidad'])?>"><label>Estado</label><select name="estado"><option <?=$cn['estado']==='Activo'?'selected':''?>>Activo</option><option <?=$cn['estado']!=='Activo'?'selected':''?>>Inactivo</option></select><label>Nota</label><input name="nota" value="<?=h($cn['nota'])?>"><button class="btn green">Guardar cambios</button></form><form method="post" onsubmit="return confirm('¿Eliminar definitivamente este cliente normal?')" style="margin-top:8px"><input type="hidden" name="action" value="delete_normal"><input type="hidden" name="normal_id" value="<?=$cn['id']?>"><button class="btn red">Eliminar cliente normal</button></form></div></article><?php endforeach; if(!$clientesNormales): ?><div class="note">Todavía no hay clientes normales añadidos.</div><?php endif; ?></div></section>
+<section class="levels panel" id="niveles"><h2 style="margin-top:0">Configuración de niveles Premium</h2><div class="levelGrid"><?php foreach($niveles as $n): $cls='lv-'.strtolower($n['nivel']); ?><div class="levelCard <?=$cls?>"><div class="levelIcon"><?= levelIcon($n['nivel']) ?></div><h3><?=h($n['nivel'])?></h3><p><?= (int)$n['min_activos'] ?>+ referidos activos</p><div class="levelPrices"><span><?=euro($n['trimestral'])?></span><span><?=euro($n['semestral'])?></span><span><?=euro($n['anual'])?></span></div></div><?php endforeach; ?></div></section>
+<section class="quickRefSearch panel" id="buscadorReferidosRapido">
+  <h2>🔎 BUSCADOR RAPIDO DE REFERIDOS</h2>
+  <input id="buscarReferidoRapido" oninput="mdFiltrarReferidosRapido()" placeholder="Buscar referido por nombre, referente, estado o fecha...">
+  <div id="quickRefEmpty" class="quickRefEmpty">No se encontró ningún referido con esa búsqueda.</div>
+  <div class="quickRefResults">
+    <?php foreach($buscadorRefs as $br): 
+      $qsearch = strtolower(($br['nombre']??'').' '.($br['cliente_nombre']??'').' '.($br['estado']??'').' '.($br['fecha_alta']??'').' '.($br['fecha_caducidad']??'').' '.($br['nota']??''));
+    ?>
+    <article class="quickRefCard" data-search="<?=h($qsearch)?>">
+      <div class="quickRefTop">
+        <div>
+          <div class="quickRefName"><?=h($br['nombre'])?></div>
+          <div class="quickRefMeta">Referente: <b><?=h($br['cliente_nombre'])?></b> · Alta: <?=h($br['fecha_alta'] ?: '-')?> · Caduca: <?=h($br['fecha_caducidad'] ?: 'Sin fecha')?></div>
+          <div class="quickRefMeta"><?= $br['nota'] ? h($br['nota']) : 'Sin nota' ?></div>
+        </div>
+        <span class="status <?= $br['estado']==='Activo'?'act':'in' ?>"><?=h($br['estado'])?></span>
+      </div>
+
+      <div class="quickRefActions">
+        <button class="btn dark small" type="button" onclick="mdEditarReferidoRapido(this)">Editar</button>
+        <form method="post" onsubmit="return confirm('¿Seguro que quieres renovar este referido 3 meses?')">
+          <input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$br['id']?>"><input type="hidden" name="months" value="3">
+          <button class="btn green small">+3 Meses</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Seguro que quieres renovar este referido 6 meses?')">
+          <input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$br['id']?>"><input type="hidden" name="months" value="6">
+          <button class="btn green small">+6 Meses</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Seguro que quieres renovar este referido 12 meses?')">
+          <input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$br['id']?>"><input type="hidden" name="months" value="12">
+          <button class="btn green small">+12 Meses</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Seguro que quieres cambiar el estado de este referido?')">
+          <input type="hidden" name="action" value="toggle_ref"><input type="hidden" name="ref_id" value="<?=$br['id']?>">
+          <button class="btn small">Activo/Inactivo</button>
+        </form>
+      </div>
+
+      <div class="quickRefEdit">
+        <div class="quickRefEditHead">
+          <h3>Editar referido</h3>
+          <button class="btn dark btnXPerfil" type="button" onclick="mdCerrarReferidoRapido(this)">✕</button>
+        </div>
+        <form method="post" style="display:grid;gap:8px" onsubmit="return confirm('¿Guardar cambios de este referido?')">
+          <input type="hidden" name="action" value="update_referido">
+          <input type="hidden" name="ref_id" value="<?=$br['id']?>">
+          <label>Nombre referido</label>
+          <input name="nombre" value="<?=h($br['nombre'])?>" required>
+          <label>Fecha alta</label>
+          <input type="date" name="fecha_alta" value="<?=h($br['fecha_alta'])?>">
+          <label>Fecha caducidad</label>
+          <input type="date" name="fecha_caducidad" value="<?=h($br['fecha_caducidad'])?>">
+          <label>Estado</label>
+          <select name="estado">
+            <option <?= $br['estado']==='Activo'?'selected':'' ?>>Activo</option>
+            <option <?= $br['estado']!=='Activo'?'selected':'' ?>>Inactivo</option>
+          </select>
+          <label>Nota</label>
+          <input name="nota" value="<?=h($br['nota'])?>" placeholder="Nota">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn">💾 Guardar cambios</button>
+            <button type="button" class="btn dark" onclick="mdCerrarReferidoRapido(this)">✕ Salir sin guardar</button>
+          </div>
+        </form>
+      </div>
+    </article>
+    <?php endforeach; ?>
+  </div>
+</section>
+
+
+<section class="duplicadosPanel panel" id="duplicados">
+  <div class="duplicadosHead">
+    <h2>🔁 Referidos repetidos entre referentes</h2>
+    <span class="duplicadosBadge"><?= $totalDuplicadosReferidos ?> posibles duplicados detectados</span>
+  </div>
+  <?php if($duplicadosReferidos): ?>
+  <div class="duplicadosGrid">
+    <?php foreach($duplicadosReferidos as $dup): ?>
+    <article class="duplicadoCard">
+      <div class="duplicadoTop">
+        <div>
+          <div class="duplicadoNombre"><?=h($dup['nombre_mostrado'])?></div>
+          <div class="duplicadoMeta">Aparece <?= (int)$dup['repeticiones'] ?> veces en <?= (int)$dup['referentes_distintos'] ?> referentes distintos.</div>
+          <div class="duplicadoMeta">Referentes: <b><?=h($dup['referentes'])?></b></div>
+        </div>
+        <span class="duplicadoAlert">REVISAR</span>
+      </div>
+      <div class="duplicadoDetalles">
+        <?php foreach(explode('###', (string)$dup['detalles']) as $det): $parts=explode('|',$det); ?>
+          <div class="duplicadoLinea">
+            <b><?=h($parts[1] ?? 'Referente')?></b> · Estado: <?=h($parts[2] ?? '-')?> · Alta: <?=h(($parts[3] ?? '') ?: '-')?> · Caduca: <?=h(($parts[4] ?? '') ?: 'Sin fecha')?><?= !empty($parts[5] ?? '') ? ' · Nota: '.h($parts[5]) : '' ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </article>
+    <?php endforeach; ?>
+  </div>
+  <?php else: ?>
+    <div class="duplicadoOk">✅ No hay referidos repetidos entre diferentes referentes.</div>
+  <?php endif; ?>
+</section>
+
+<section class="inactivosPanel panel" id="inactivos">
+  <div class="inactivosHead">
+    <h2>❌ Referidos inactivos</h2>
+    <span class="inactivosBadge"><?= count($referidosInactivos) ?> inactivos · con referente asignado</span>
+  </div>
+  <div class="inactivosGrid">
+    <?php foreach($referidosInactivosPagina as $ri): ?>
+    <article class="inactivoCard">
+      <div class="inactivoTop">
+        <div>
+          <div class="inactivoNombre"><?=h($ri['nombre'])?></div>
+          <div class="inactivoMeta">Referente: <span class="inactivoRef"><?=h($ri['cliente_nombre'])?></span></div>
+          <div class="inactivoMeta">Alta: <?=h($ri['fecha_alta'] ?: '-')?> · Caducidad: <?=h($ri['fecha_caducidad'] ?: 'Sin fecha')?></div>
+          <div class="inactivoMeta"><?= $ri['nota'] ? h($ri['nota']) : 'Sin nota' ?></div>
+        </div>
+        <span class="inactivoEstado"><?=h($ri['estado'])?></span>
+      </div>
+      <div class="inactivoActions">
+        <form method="post" onsubmit="return confirm('¿Renovar este referido 3 meses?')">
+          <input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$ri['id']?>"><input type="hidden" name="months" value="3">
+          <button class="btn green small">+3 Meses</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Renovar este referido 6 meses?')">
+          <input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$ri['id']?>"><input type="hidden" name="months" value="6">
+          <button class="btn green small">+6 Meses</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Renovar este referido 12 meses?')">
+          <input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$ri['id']?>"><input type="hidden" name="months" value="12">
+          <button class="btn green small">+12 Meses</button>
+        </form>
+        <form method="post" onsubmit="return confirm('¿Cambiar este referido a activo/inactivo?')">
+          <input type="hidden" name="action" value="toggle_ref"><input type="hidden" name="ref_id" value="<?=$ri['id']?>">
+          <button class="btn small">Activo/Inactivo</button>
+        </form>
+        <button class="btn dark small" type="button" onclick="mdToggleFechaInactivo(this)">📅 Editar fecha</button>
+        <form method="post" onsubmit="return confirm('¿Seguro que quieres eliminar definitivamente este referido inactivo? Esta acción no se puede deshacer.')">
+          <input type="hidden" name="action" value="delete_ref"><input type="hidden" name="ref_id" value="<?=$ri['id']?>">
+          <button class="btn red small">🗑️ Eliminar</button>
+        </form>
+      </div>
+      <div class="inactivoFechaEdit">
+        <form method="post" onsubmit="return confirm('¿Guardar nueva fecha de caducidad?')">
+          <input type="hidden" name="action" value="update_fecha_inactivo">
+          <input type="hidden" name="ref_id" value="<?=$ri['id']?>">
+          <div>
+            <label>Nueva fecha de caducidad</label>
+            <input type="date" name="fecha_caducidad" value="<?=h($ri['fecha_caducidad'])?>" required>
+          </div>
+          <button class="btn small">💾 Guardar fecha</button>
+        </form>
+      </div>
+    </article>
+    <?php endforeach; ?>
+    <?php if(!$referidosInactivos): ?><div class="note">No hay referidos inactivos actualmente.</div><?php endif; ?>
+  </div>
+  <?php if(count($referidosInactivos) > $porPagina): ?>
+  <div class="mdPagination">
+    <a class="btn small dark <?= $paginaInactivos <= 1 ? 'disabled' : '' ?>" href="<?=h(pageUrl('pagina_inactivos', $paginaInactivos-1))?>#inactivos">⬅ Anterior</a>
+    <span class="mdPaginationInfo">Página <?= $paginaInactivos ?> de <?= $totalPagInactivos ?> · <?= count($referidosInactivos) ?> inactivos</span>
+    <a class="btn small <?= $paginaInactivos >= $totalPagInactivos ? 'disabled' : '' ?>" href="<?=h(pageUrl('pagina_inactivos', $paginaInactivos+1))?>#inactivos">Siguiente ➜</a>
+  </div>
+  <?php endif; ?>
+</section>
+<section class="clientesSearchPanel panel" id="clientes">
+  <h2>🔎 BUSCADOR RAPIDO DE CLIENTES REFERENTES</h2>
+  <input id="buscarCliente" oninput="filtrarClientes()" placeholder="Buscar cliente por nombre, contacto, Telegram o nivel...">
+</section>
+<section class="clients">
+<?php foreach($clientesPagina as $c): $act=(int)$c['activos'];$ina=(int)$c['inactivos'];$tot=(int)$c['total_refs'];$niv=nivelActual($act,$niveles);$nx=nextLevel($act,$niveles);$miniProgress=$nx?min(100,round(($act/(int)$nx['min_activos'])*100)):100;$faltan=$nx?((int)$nx['min_activos']-$act):0;$refs=$pdo->prepare("SELECT * FROM referidos WHERE cliente_id=? ORDER BY id DESC");$refs->execute([$c['id']]);$rs=$refs->fetchAll();$mid='modal_'.$c['id']; ?>
+<article class="client panel" data-search="<?=h(strtolower($c['nombre'].' '.$c['contacto'].' '.$c['telefono'].' '.($c['telegram'] ?? '')) )?>"><span class="badge"><?=h($niv['icon'].' '.$niv['nivel'])?></span><h3><?=h($c['nombre'])?></h3><div class="muted">📱 <?=h($c['contacto'] ?: $c['telefono'] ?: 'Sin WhatsApp/contacto')?></div>
+<div class="muted">✈️ <?php if(!empty($c['telegram'])): ?><a class="tgRefLink" href="https://t.me/<?=h(ltrim($c['telegram'],'@'))?>" target="_blank" rel="noopener">@<?=h(ltrim($c['telegram'],'@'))?></a><?php else: ?>Sin Telegram<?php endif; ?></div><div class="metrics"><div class="metric"><b><?= $act ?></b><span>Activos</span></div><div class="metric"><b><?= $ina ?></b><span>Inactivos</span></div><div class="metric"><b><?= $tot ?></b><span>Total</span></div></div><div class="miniProgress"><small><span><?= $nx ? 'Faltan '.$faltan.' para '.$nx['nivel'] : 'Nivel máximo' ?></span><span><?= $miniProgress ?>%</span></small><div class="miniBar"><span style="--w:<?=$miniProgress?>%"></span></div></div><div class="prices"><div class="price"><span>3M</span><b><?=euro($niv['trimestral'])?></b></div><div class="price"><span>6M</span><b><?=euro($niv['semestral'])?></b></div><div class="price"><span>12M</span><b><?=euro($niv['anual'])?></b></div></div><div class="note"><?= $c['nota'] ? h($c['nota']) : 'Sin nota' ?></div><div class="clientMainActions">
+<button class="btn" onclick="openM('<?=$mid?>')" type="button">Gestionar</button>
+<button class="btn dark" onclick="openM('<?=$mid?>','add')" type="button">+ Referido</button>
+<?php if(!empty($c['telegram'])): ?>
+<a class="btn btnTelegramRef" href="https://t.me/<?=h(ltrim($c['telegram'],'@'))?>" target="_blank" rel="noopener">✈️ Telegram</a>
+<?php else: ?>
+<button class="btn btnTelegramRef off" type="button" onclick="alert('Este referente no tiene alias de Telegram añadido. Edita el perfil y añade su @usuario.')">✈️ Sin Telegram</button>
+<?php endif; ?>
+<button class="btn green" onclick="return mdPerfilToggle(this)" type="button">⚙️ Editar perfil</button>
+<form method="post" onsubmit="return confirm('⚠️ ¿Seguro que quieres eliminar este referente?\n\nSe borrará también TODO su listado de referidos y no se podrá recuperar desde el panel.')">
+  <input type="hidden" name="action" value="delete_cliente">
+  <input type="hidden" name="cliente_id" value="<?=$c['id']?>">
+  <button class="btn red" type="submit">🗑️ Eliminar referente</button>
+</form>
+</div>
+<div class="perfilReferenteBox">
+  <div class="perfilReferenteHead">
+    <h3>⚙️ Editar este referente</h3>
+    <button class="btn dark btnXPerfil" type="button" onclick="return mdPerfilClose(this)">✕</button>
+  </div>
+  <form method="post" style="display:grid;gap:9px" onsubmit="return confirm('¿Guardar cambios de este referente?')">
+    <input type="hidden" name="action" value="update_cliente">
+    <input type="hidden" name="cliente_id" value="<?=$c['id']?>">
+    <label>Nombre del referente</label>
+    <input name="nombre" value="<?=h($c['nombre'])?>" required>
+    <label>WhatsApp / Contacto del referente</label>
+    <input name="contacto" value="<?=h($c['contacto'] ?: $c['telefono'])?>" placeholder="WhatsApp, teléfono o email">
+    <label>Telegram del referente</label>
+    <input name="telegram" value="<?=h($c['telegram'] ?? '')?>" placeholder="@usuarioTelegram">
+    <label>Nota del referente</label>
+    <textarea name="nota" placeholder="Nota del referente"><?=h($c['nota'])?></textarea>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn">💾 Guardar perfil</button>
+      <button type="button" class="btn dark" onclick="return mdPerfilClose(this)">✕ Salir sin guardar</button>
+    </div>
+  </form>
+</div></article>
+<div class="modal" id="<?=$mid?>"><div class="sheet panel"><div class="sheetHead panel"><div><h2><?=h($c['nombre'])?> <span class="gold"><?=h($niv['icon'].' '.$niv['nivel'])?></span></h2><div class="muted"><?= $act ?> activos · <?= $ina ?> inactivos · <?= $tot ?> total</div><div class="tabs"><a href="#res_<?=$mid?>">Resumen</a><a href="#add_<?=$mid?>">Añadir</a><a href="#refs_<?=$mid?>">Referidos</a><a href="#not_<?=$mid?>">Notas</a></div></div><button class="btn dark" onclick="closeM('<?=$mid?>')" type="button">✕</button></div><div class="modalBody"><aside class="panel box" id="res_<?=$mid?>"><h3>Resumen</h3><div class="metrics"><div class="metric"><b><?= $act ?></b><span>Activos</span></div><div class="metric"><b><?= $ina ?></b><span>Inactivos</span></div><div class="metric"><b><?= $tot ?></b><span>Total</span></div></div><div class="miniProgress"><small><span><?= $nx ? 'Faltan '.$faltan.' para '.$nx['nivel'] : 'Nivel máximo' ?></span><span><?= $miniProgress ?>%</span></small><div class="miniBar"><span style="--w:<?=$miniProgress?>%"></span></div></div><div class="prices"><div class="price"><span>3 meses</span><b><?=euro($niv['trimestral'])?></b></div><div class="price"><span>6 meses</span><b><?=euro($niv['semestral'])?></b></div><div class="price"><span>12 meses</span><b><?=euro($niv['anual'])?></b></div></div>
+<?php
+$copyAll = "━━━━━━━━━━━━━━━━━━\nCLIENTE: ".$c['nombre']."\nNIVEL: ".$niv['nivel']."\n━━━━━━━━━━━━━━━━━━\n\n";
+$copyAct = "━━━━━━━━━━━━━━━━━━\nCLIENTE: ".$c['nombre']."\nREFERIDOS ACTIVOS\nNIVEL: ".$niv['nivel']."\n━━━━━━━━━━━━━━━━━━\n\n";
+$copyIna = "━━━━━━━━━━━━━━━━━━\nCLIENTE: ".$c['nombre']."\nREFERIDOS INACTIVOS\nNIVEL: ".$niv['nivel']."\n━━━━━━━━━━━━━━━━━━\n\n";
+$actCountTxt = 0;
+$inaCountTxt = 0;
+foreach($rs as $rr){
+  $esActivo = (($rr['estado'] ?? '') === 'Activo');
+  $linea = ($esActivo ? "✅ " : "❌ ") . ($rr['nombre'] ?? '') . "\n";
+  $linea .= ($esActivo ? "Caduca: " : "Caducó: ") . fechaTxt($rr['fecha_caducidad'] ?? '') . "\n";
+  if(!empty($rr['nota'])) $linea .= "Nota: ".$rr['nota']."\n";
+  $linea .= "\n";
+  $copyAll .= $linea;
+  if($esActivo){ $copyAct .= $linea; $actCountTxt++; }
+  else { $copyIna .= $linea; $inaCountTxt++; }
+}
+$copyAll .= "━━━━━━━━━━━━━━━━━━\nACTIVOS: ".$actCountTxt."\nINACTIVOS: ".$inaCountTxt."\nTOTAL: ".($actCountTxt+$inaCountTxt)."\n━━━━━━━━━━━━━━━━━━";
+$copyAct .= "━━━━━━━━━━━━━━━━━━\nTOTAL ACTIVOS: ".$actCountTxt."\n━━━━━━━━━━━━━━━━━━";
+$copyIna .= "━━━━━━━━━━━━━━━━━━\nTOTAL INACTIVOS: ".$inaCountTxt."\n━━━━━━━━━━━━━━━━━━";
+?>
+<div class="copyBox"><h3>📋 Copiar referidos</h3><div class="copyButtons"><button class="btn dark" type="button" data-copy="<?=h(base64_encode($copyAll))?>" onclick="mdCopyBtn(this)">📋 Copiar todos</button><button class="btn dark" type="button" data-copy="<?=h(base64_encode($copyAct))?>" onclick="mdCopyBtn(this)">✅ Copiar activos</button><button class="btn dark" type="button" data-copy="<?=h(base64_encode($copyIna))?>" onclick="mdCopyBtn(this)">❌ Copiar inactivos</button><button class="btn green" type="button" data-copy="<?=h(base64_encode($copyAll))?>" onclick="mdTelegramBtn(this)">✈️ Telegram</button></div></div>
+<h3 id="add_<?=$mid?>">Añadir referido</h3><form method="post" style="display:grid;gap:9px"><input type="hidden" name="action" value="add_referido"><input type="hidden" name="cliente_id" value="<?=$c['id']?>"><input type="hidden" name="return_modal" value="m<?=$c['id']?>"><input name="nombre" placeholder="Nombre referido" required><label>Fecha alta</label><input type="date" name="fecha_alta" value="<?=$today?>"><label>Fecha caducidad</label><input type="date" name="fecha_caducidad"><select name="estado"><option>Activo</option><option>Inactivo</option></select><input name="nota" placeholder="Nota del referido"><button class="btn green">Guardar referido</button>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+<button type="button" class="btn dark small" onclick="mdSetMonths(this,3)">✅ +3 Meses</button>
+<button type="button" class="btn dark small" onclick="mdSetMonths(this,6)">✅ +6 Meses</button>
+<button type="button" class="btn dark small" onclick="mdSetMonths(this,12)">✅ +12 Meses</button>
+</div></form></aside><section class="panel box"><h3 id="refs_<?=$mid?>">Referidos</h3><div class="refList"><?php foreach($rs as $r): ?><article class="ref"><div class="refTop"><div><b><?=h($r['nombre'])?></b><div class="muted">Alta: <?=h($r['fecha_alta']?:'-')?> · Caduca: <?=h($r['fecha_caducidad']?:'Sin fecha')?></div></div><span class="status <?= $r['estado']==='Activo'?'act':'in' ?>"><?=h($r['estado'])?></span></div><div class="note" style="margin-top:8px"><?= $r['nota'] ? h($r['nota']) : 'Sin nota' ?></div><div class="refActions"><button class="btn dark small" type="button" onclick="this.closest('.ref').classList.toggle('edit')">Editar</button><form method="post"><input type="hidden" name="action" value="toggle_ref"><input type="hidden" name="ref_id" value="<?=$r['id']?>"><button class="btn small">Activo/Inactivo</button></form><form method="post" onsubmit="return confirm('¿Eliminar referido?')"><input type="hidden" name="action" value="delete_ref"><input type="hidden" name="ref_id" value="<?=$r['id']?>"><button class="btn red small">Eliminar</button></form></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+<form method="post"><input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$r['id']?>"><input type="hidden" name="months" value="3"><button class="btn green small">+3 Meses</button></form>
+<form method="post"><input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$r['id']?>"><input type="hidden" name="months" value="6"><button class="btn green small">+6 Meses</button></form>
+<form method="post"><input type="hidden" name="action" value="renew_ref"><input type="hidden" name="ref_id" value="<?=$r['id']?>"><input type="hidden" name="months" value="12"><button class="btn green small">+12 Meses</button></form>
+</div><div class="editBox"><form method="post" style="display:grid;gap:8px"><input type="hidden" name="action" value="update_referido"><input type="hidden" name="ref_id" value="<?=$r['id']?>"><input name="nombre" value="<?=h($r['nombre'])?>" required><input type="date" name="fecha_alta" value="<?=h($r['fecha_alta'])?>"><input type="date" name="fecha_caducidad" value="<?=h($r['fecha_caducidad'])?>"><select name="estado"><option <?= $r['estado']==='Activo'?'selected':'' ?>>Activo</option><option <?= $r['estado']!=='Activo'?'selected':'' ?>>Inactivo</option></select><input name="nota" value="<?=h($r['nota'])?>" placeholder="Nota"><button class="btn">Guardar cambios</button></form></div></article><?php endforeach; if(!$rs): ?><div class="note">Sin referidos todavía.</div><?php endif; ?></div><h3 id="not_<?=$mid?>" style="margin-top:18px">Datos y nota del cliente</h3><form method="post" style="display:grid;gap:9px"><input type="hidden" name="action" value="update_cliente"><input type="hidden" name="cliente_id" value="<?=$c['id']?>"><input name="nombre" value="<?=h($c['nombre'])?>" required><input name="contacto" value="<?=h($c['contacto'] ?: $c['telefono'])?>" placeholder="Contacto"><textarea name="nota" placeholder="Nota del cliente"><?=h($c['nota'])?></textarea><button class="btn">Guardar cliente</button></form><form method="post" onsubmit="return confirm('⚠️ ¿Seguro que quieres eliminar este referente?\n\nSe borrará también TODO su listado de referidos y no se podrá recuperar desde el panel.')" style="margin-top:10px"><input type="hidden" name="action" value="delete_cliente"><input type="hidden" name="cliente_id" value="<?=$c['id']?>"><button class="btn red">🗑️ Eliminar referente completo</button></form></section></div></div></div>
+<?php endforeach; ?></section>
+<?php if(count($clientes) > $porPagina): ?>
+<div class="mdPagination" id="clientesPaginacion">
+  <a class="btn small dark <?= $paginaClientes <= 1 ? 'disabled' : '' ?>" href="<?=h(pageUrl('pagina_clientes', $paginaClientes-1))?>#clientes">⬅ Anterior</a>
+  <span class="mdPaginationInfo">Página <?= $paginaClientes ?> de <?= $totalPagClientes ?> · <?= count($clientes) ?> clientes</span>
+  <a class="btn small <?= $paginaClientes >= $totalPagClientes ? 'disabled' : '' ?>" href="<?=h(pageUrl('pagina_clientes', $paginaClientes+1))?>#clientes">Siguiente ➜</a>
+</div>
+<?php endif; ?>
+</main></div><nav class="mobileNav"><a href="#dashboard">Inicio</a><a href="#clientes">Clientes</a><a href="#addCliente">Añadir</a><a href="#duplicados">Repetidos</a></nav><script>let sy=0;function openM(id,target){sy=scrollY;document.getElementById(id).classList.add('open');document.body.style.overflow='hidden';setTimeout(()=>{if(target==='add'){let e=document.getElementById('add_'+id);if(e)e.scrollIntoView({behavior:'smooth',block:'start'});}},120)}function closeM(id){document.getElementById(id).classList.remove('open');document.body.style.overflow='';scrollTo(0,sy)}document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelectorAll('.modal.open').forEach(m=>m.classList.remove('open'));document.body.style.overflow='';}});function filtrarClientes(){let q=(document.getElementById('buscarCliente').value||'').toLowerCase();document.querySelectorAll('.client[data-search]').forEach(c=>{c.style.display=c.dataset.search.includes(q)?'block':'none';});}</script>
+<style>
+/* ===== MDPRIME FIX FINAL: mantener modal abierto + scroll móvil ===== */
+@media(max-width:760px){
+  .modal,.modal.open{
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+    touch-action:pan-y!important;
+  }
+  .sheet,.modalSheet{
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    height:100dvh!important;
+    min-height:100dvh!important;
+    max-height:100dvh!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  .modalBody{
+    display:block!important;
+    overflow-y:visible!important;
+    overflow-x:hidden!important;
+    height:auto!important;
+    min-height:calc(100dvh - 150px)!important;
+    max-height:none!important;
+    padding-bottom:135px!important;
+    -webkit-overflow-scrolling:touch!important;
+  }
+  .sheetHead,.modalHead{
+    position:sticky!important;
+    top:0!important;
+    z-index:999!important;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('submit', function(e){
+  const modal = e.target.closest('.modal');
+  if(modal && modal.id && !e.target.querySelector('input[name="return_modal"]')){
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'return_modal';
+    input.value = modal.id;
+    e.target.appendChild(input);
+  }
+}, true);
+
+document.addEventListener('DOMContentLoaded', function(){
+  const params = new URLSearchParams(window.location.search);
+  const openId = params.get('open');
+  if(openId && document.getElementById(openId)){
+    setTimeout(function(){ openM(openId); }, 150);
+  }
+});
+</script>
+
+<style>
+.copyBox{margin-top:12px;border:1px solid rgba(245,197,66,.28);background:linear-gradient(135deg,rgba(245,197,66,.10),rgba(255,255,255,.035));border-radius:18px;padding:13px}.copyBox h3{margin:0 0 10px}.copyButtons{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.copyButtons .btn{width:100%}.copyToast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:99999;background:linear-gradient(135deg,#22c55e,#14b8a6);color:#fff;font-weight:1000;padding:12px 18px;border-radius:999px;box-shadow:0 18px 50px rgba(0,0,0,.45);display:none}.copyToast.show{display:block}@media(max-width:760px){.copyButtons{grid-template-columns:1fr!important}.copyBox{padding:12px!important;border-radius:16px!important}}
+</style>
+<div id="copyToast" class="copyToast">Referidos copiados</div>
+<script>
+function mdDecodeB64(b64){try{const bin=atob(b64);const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return new TextDecoder('utf-8').decode(bytes);}catch(e){try{return decodeURIComponent(escape(atob(b64)));}catch(err){return '';}}}
+function mdToast(msg){let t=document.getElementById('copyToast');if(!t){t=document.createElement('div');t.id='copyToast';t.className='copyToast';document.body.appendChild(t);}t.textContent=msg||'Referidos copiados';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800);}
+function mdFallbackCopy(text){const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.top='0';ta.style.left='0';ta.style.opacity='0';document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);let ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);if(ok)mdToast('Referidos copiados');else prompt('Copia este texto:',text);}
+function mdCopyRaw(text){text=String(text||'');if(!text.trim()){mdToast('No hay datos para copiar');return;}if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(text).then(()=>mdToast('Referidos copiados')).catch(()=>mdFallbackCopy(text));}else mdFallbackCopy(text);}
+function mdCopyBtn(btn){mdCopyRaw(mdDecodeB64(btn.getAttribute('data-copy')||''));}
+function mdTelegramBtn(btn){const text=mdDecodeB64(btn.getAttribute('data-copy')||'');mdCopyRaw(text);window.open('https://t.me/share/url?url=&text='+encodeURIComponent(text),'_blank');}
+</script>
+
+<script>
+function mdSetMonths(btn,months){
+  var form = btn.closest('form');
+  if(!form) return;
+
+  var cad = form.querySelector('input[name="fecha_caducidad"]');
+  if(!cad) return;
+
+  var base = new Date();
+  if(cad.value){
+    var d = new Date(cad.value + 'T00:00:00');
+    if(!isNaN(d.getTime())) base = d;
+  }
+
+  base.setMonth(base.getMonth() + months);
+
+  var y = base.getFullYear();
+  var m = String(base.getMonth() + 1).padStart(2,'0');
+  var d2 = String(base.getDate()).padStart(2,'0');
+
+  cad.value = y + '-' + m + '-' + d2;
+}
+</script>
+
+<script id="mdPerfilReferenteSoloJs">
+function mdPerfilToggle(btn){
+  var card = btn.closest('.client');
+  if(!card) return false;
+  var box = card.querySelector('.perfilReferenteBox');
+  if(!box) return false;
+  box.classList.toggle('open');
+  if(box.classList.contains('open')){
+    setTimeout(function(){ box.scrollIntoView({behavior:'smooth', block:'center'}); }, 60);
+  }
+  return false;
+}
+function mdPerfilClose(btn){
+  var box = btn.closest('.perfilReferenteBox');
+  if(box) box.classList.remove('open');
+  return false;
+}
+</script>
+
+<script id="mdBuscadorReferidosJs">
+function mdFiltrarReferidosRapido(){
+  var input = document.getElementById('buscarReferidoRapido');
+  if(!input) return;
+  var q = (input.value || '').toLowerCase().trim();
+  var cards = document.querySelectorAll('.quickRefCard');
+  var empty = document.getElementById('quickRefEmpty');
+  var count = 0;
+
+  cards.forEach(function(card){
+    card.classList.remove('editing');
+    if(q.length < 1){
+      card.classList.remove('show');
+      return;
+    }
+    var ok = (card.getAttribute('data-search') || '').includes(q);
+    card.classList.toggle('show', ok);
+    if(ok) count++;
+  });
+
+  if(empty) empty.classList.toggle('show', q.length > 0 && count === 0);
+}
+function mdEditarReferidoRapido(btn){
+  var card = btn.closest('.quickRefCard');
+  if(!card) return false;
+  document.querySelectorAll('.quickRefCard.editing').forEach(function(c){
+    if(c !== card) c.classList.remove('editing');
+  });
+  card.classList.add('editing');
+  setTimeout(function(){ card.scrollIntoView({behavior:'smooth', block:'center'}); }, 60);
+  return false;
+}
+function mdCerrarReferidoRapido(btn){
+  var card = btn.closest('.quickRefCard');
+  if(card) card.classList.remove('editing');
+  return false;
+}
+</script>
+
+<script id="mdInactivosFechaJs">
+function mdToggleFechaInactivo(btn){
+  var card = btn.closest('.inactivoCard');
+  if(!card) return false;
+  var box = card.querySelector('.inactivoFechaEdit');
+  if(!box) return false;
+  document.querySelectorAll('.inactivoFechaEdit.open').forEach(function(el){
+    if(el !== box) el.classList.remove('open');
+  });
+  box.classList.toggle('open');
+  if(box.classList.contains('open')){
+    setTimeout(function(){ box.scrollIntoView({behavior:'smooth', block:'center'}); }, 60);
+  }
+  return false;
+}
+</script>
+</body></html>
