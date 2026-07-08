@@ -91,7 +91,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-GRUPOS-SILENCIO-PRIVADO-SONIDO-20260708-15";
+$bot_version = "MDPRIME-BOT-GRUPO-IGNORA-TEXTO-20260708-16";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -957,6 +957,14 @@ $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
 
 $chat_type = $update["message"]["chat"]["type"] ?? "private";
+
+// En grupos, ignorar cualquier texto normal que no sea comando.
+// Así el bot no responde "Comando no reconocido" a conversaciones normales.
+if ($chat_type !== "private" && substr($text, 0, 1) !== "/") {
+    http_response_code(200);
+    exit;
+}
+
 $message_id = $update["message"]["message_id"] ?? null;
 
 // Comandos privados usados dentro de grupos:
