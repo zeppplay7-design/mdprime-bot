@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-ABRIR-CHAT-ADMIN-V33-20260708";
+$bot_version = "MDPRIME-BOT-RECIBO-ADMIN-COMPLETO-V34-20260708";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1945,10 +1945,19 @@ if (isset($update["callback_query"])) {
                 $tipo = renovarTipoDesdeData($pendiente);
                 $nivelTxt = !empty($pendiente["es_vip"]) ? renovarNivelTxt($pendiente["nivel"] ?? "") : "Plan normal";
 
+                $from_cliente = $pendiente["telegram_from"] ?? [];
+                $nombreTelegram = trim(
+                    ($from_cliente["first_name"] ?? "") . " " .
+                    ($from_cliente["last_name"] ?? "")
+                );
+                $aliasTelegram = $from_cliente["username"] ?? "";
+                $aliasTxt = $aliasTelegram !== "" ? "@".$aliasTelegram : "Sin alias público";
+                $linkTelegram = $aliasTelegram !== "" ? "https://t.me/".$aliasTelegram : "No disponible";
+
                 editMessageText(
                     $chat_id,
                     $message_id,
-                    "✅ RENOVACIÓN APROBADA Y APLICADA\n\n👤 Usuario:\n".$usuario."\n\n📦 Plan contratado:\n".$tipo."\n\n🏆 Paquete / nivel:\n".$nivelTxt."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados."
+                    "━━━━━━━━━━━━━━━━━━\n✅ RENOVACIÓN APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$tipo."\n\n🏆 Paquete / nivel:\n".$nivelTxt."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados.\n━━━━━━━━━━━━━━━━━━"
                 );
 
                 if ($cliente_chat_id !== "") {
