@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RENOVAR-MUESTRA-PRECIOS-20260708-21";
+$bot_version = "MDPRIME-BOT-RENOVAR-USUARIO-GUARDADO-20260708-22";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1252,6 +1252,102 @@ Tarifa estándar
 ¿Deseas enviar la solicitud?";
 }
 
+
+function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_mdprime) {
+    $usuario_mdprime = trim($usuario_mdprime);
+    $datos = consultarClienteApi($usuario_mdprime);
+
+    $caduca = "No encontrada";
+    $dias = "No disponible";
+    $nombre_encontrado = $usuario_mdprime;
+    $nivel_actual = "";
+    $referente_nombre = "";
+
+    if (!empty($datos["ok"]) && !empty($datos["cliente"])) {
+        $nombre_encontrado = $datos["cliente"]["nombre"] ?? $usuario_mdprime;
+        $caduca = $datos["resumen"]["proxima_caducidad"] ?? "Sin fecha";
+        $dias = fmtDias($datos["resumen"]["dias_proxima_caducidad"] ?? null);
+        $nivel_actual = renovarNivelKeyDesdeTexto($datos["nivel"]["actual"] ?? "");
+        $referente_nombre = $nombre_encontrado;
+    } elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
+        $nombre_encontrado = $datos["referido"]["nombre"] ?? $usuario_mdprime;
+        $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
+        $dias = fmtDias($datos["referido"]["dias"] ?? null);
+
+        $referente_nombre = $datos["referente"]["nombre"] ?? "";
+        $referente_id = $datos["referente"]["id"] ?? 0;
+
+        if ($referente_id) {
+            $info_nivel = obtenerNivelReferentePorId($referente_id);
+            $nivel_actual = $info_nivel["nivel"] ?? "";
+        }
+    }
+
+    $es_vip = ($nivel_actual !== "");
+
+    $ren_data = [
+        "usuario" => $usuario_mdprime,
+        "usuario_encontrado" => $nombre_encontrado,
+        "referente_nombre" => $referente_nombre,
+        "es_vip" => $es_vip,
+        "nivel_actual" => $nivel_actual,
+        "caduca" => $caduca,
+        "dias" => $dias
+    ];
+
+    guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
+
+    if ($es_vip) {
+        $msg = "✅ Usuario encontrado
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario:
+".$nombre_encontrado."
+
+👥 Referente:
+".($referente_nombre !== "" ? $referente_nombre : "No disponible")."
+
+📅 Caduca:
+".$caduca."
+
+⏳ Tiempo restante:
+".$dias."
+
+━━━━━━━━━━━━━━━━━━
+
+🏆 Nivel disponible:
+".renovarNivelTxt($nivel_actual)."
+
+💶 Precios disponibles:
+3 meses → ".renovarPrecioReferidos($nivel_actual, 3)."€
+6 meses → ".renovarPrecioReferidos($nivel_actual, 6)."€
+12 meses → ".renovarPrecioReferidos($nivel_actual, 12)."€
+
+━━━━━━━━━━━━━━━━━━
+
+Selecciona la duración de tu renovación:";
+    } else {
+        $msg = "ℹ️ Tu usuario no pertenece al programa de Referidos VIP.
+
+La renovación se realizará con tarifa estándar.
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario escrito:
+".$usuario_mdprime."
+
+💶 Tarifa estándar:
+3 meses → ".renovarPrecioNormal(3)."€
+6 meses → ".renovarPrecioNormal(6)."€
+12 meses → ".renovarPrecioNormal(12)."€
+
+Selecciona la duración:";
+    }
+
+    sendInlineMessage($chat_id, $msg, renovarDuracionKeyboard($ren_data));
+}
+
 function enviarRenovacionAdmin($admin_id, $chat_id, $update_from, $data) {
     $usuario = $data["usuario"] ?? "Sin usuario";
     $meses = (int)($data["meses"] ?? 0);
@@ -1799,102 +1895,7 @@ A partir de ahora podrás consultar tu cuenta directamente.");
 if ($user_state === "renovar") {
 
     $usuario_mdprime = trim($text);
-
-    $datos = consultarClienteApi($usuario_mdprime);
-
-    $caduca = "No encontrada";
-    $dias = "No disponible";
-    $nombre_encontrado = $usuario_mdprime;
-    $nivel_actual = "";
-    $referente_nombre = "";
-
-    // Si quien renueva es un REFERENTE, usamos su propio nivel.
-    if (!empty($datos["ok"]) && !empty($datos["cliente"])) {
-        $nombre_encontrado = $datos["cliente"]["nombre"] ?? $usuario_mdprime;
-        $caduca = $datos["resumen"]["proxima_caducidad"] ?? "Sin fecha";
-        $dias = fmtDias($datos["resumen"]["dias_proxima_caducidad"] ?? null);
-        $nivel_actual = renovarNivelKeyDesdeTexto($datos["nivel"]["actual"] ?? "");
-        $referente_nombre = $nombre_encontrado;
-    }
-
-    // Si quien renueva es un REFERIDO, usamos el nivel de su REFERENTE.
-    elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
-        $nombre_encontrado = $datos["referido"]["nombre"] ?? $usuario_mdprime;
-        $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
-        $dias = fmtDias($datos["referido"]["dias"] ?? null);
-
-        $referente_nombre = $datos["referente"]["nombre"] ?? "";
-        $referente_id = $datos["referente"]["id"] ?? 0;
-
-        if ($referente_id) {
-            $info_nivel = obtenerNivelReferentePorId($referente_id);
-            $nivel_actual = $info_nivel["nivel"] ?? "";
-        }
-    }
-
-    $es_vip = ($nivel_actual !== "");
-
-    $ren_data = [
-        "usuario" => $usuario_mdprime,
-        "usuario_encontrado" => $nombre_encontrado,
-        "referente_nombre" => $referente_nombre,
-        "es_vip" => $es_vip,
-        "nivel_actual" => $nivel_actual,
-        "caduca" => $caduca,
-        "dias" => $dias
-    ];
-
-    guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
-
-    if ($es_vip) {
-        $msg = "✅ Usuario encontrado
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".$nombre_encontrado."
-
-👥 Referente:
-".($referente_nombre !== "" ? $referente_nombre : "No disponible")."
-
-📅 Caduca:
-".$caduca."
-
-⏳ Tiempo restante:
-".$dias."
-
-━━━━━━━━━━━━━━━━━━
-
-🏆 Nivel disponible:
-".renovarNivelTxt($nivel_actual)."
-
-💶 Precios disponibles:
-3 meses → ".renovarPrecioReferidos($nivel_actual, 3)."€
-6 meses → ".renovarPrecioReferidos($nivel_actual, 6)."€
-12 meses → ".renovarPrecioReferidos($nivel_actual, 12)."€
-
-━━━━━━━━━━━━━━━━━━
-
-Selecciona la duración de tu renovación:";
-    } else {
-        $msg = "ℹ️ Tu usuario no pertenece al programa de Referidos VIP.
-
-La renovación se realizará con tarifa estándar.
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario escrito:
-".$usuario_mdprime."
-
-💶 Tarifa estándar:
-3 meses → ".renovarPrecioNormal(3)."€
-6 meses → ".renovarPrecioNormal(6)."€
-12 meses → ".renovarPrecioNormal(12)."€
-
-Selecciona la duración:";
-    }
-
-    sendInlineMessage($chat_id, $msg, renovarDuracionKeyboard($ren_data));
+    iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario_mdprime);
 
     http_response_code(200);
     exit;
@@ -2104,22 +2105,38 @@ Introduce el nuevo usuario MDPRIME que quieres guardar.");
 
 case "/renovar":
 
+    if ($saved_usuario !== "") {
+        iniciarRenovacionConUsuario($state_file, $states, $chat_id, $saved_usuario);
+        break;
+    }
+
     setUserMode($state_file, $states, $chat_id, "renovar");
 
     $nombre = trim(($update["message"]["from"]["first_name"] ?? "") . " " . ($update["message"]["from"]["last_name"] ?? ""));
     $usernameTelegram = $update["message"]["from"]["username"] ?? "";
 
-    $texto = "🔄 RENOVACIÓN MDPRIME\n\n";
-    $texto .= "Introduce tu usuario de MDPRIME para comprobar tu tipo de cuenta.\n\n";
-    $texto .= "Ejemplo:\n";
-    $texto .= "Pepito44\n\n";
-    $texto .= "━━━━━━━━━━━━━━━━━━━━━━\n";
-    $texto .= "👤 Nombre Telegram: ".$nombre."\n";
+    $texto = "🔄 RENOVACIÓN MDPRIME
+
+";
+    $texto .= "Introduce tu usuario de MDPRIME para comprobar tu tipo de cuenta.
+
+";
+    $texto .= "Ejemplo:
+";
+    $texto .= "Pepito44
+
+";
+    $texto .= "━━━━━━━━━━━━━━━━━━━━━━
+";
+    $texto .= "👤 Nombre Telegram: ".$nombre."
+";
 
     if ($usernameTelegram != "") {
-        $texto .= "📱 Usuario Telegram: @".$usernameTelegram."\n";
+        $texto .= "📱 Usuario Telegram: @".$usernameTelegram."
+";
     } else {
-        $texto .= "📱 Usuario Telegram: (No disponible)\n";
+        $texto .= "📱 Usuario Telegram: (No disponible)
+";
     }
 
     sendMessage($chat_id, $texto);
