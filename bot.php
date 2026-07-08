@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-RENOVAR-PAGO-COMPROBANTE-20260708-19";
+$bot_version = "MDPRIME-BOT-RENOVAR-REFERIDO-NIVEL-REFERENTE-20260708-20";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -962,6 +962,43 @@ O cambia el usuario con:
 }
 
 
+function obtenerNivelReferentePorId($referente_id) {
+    try {
+        $pdo = getRailwayPdo();
+
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) 
+            FROM referidos 
+            WHERE cliente_id = ?
+              AND estado = 'Activo'
+              AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE())
+        ");
+        $stmt->execute([(int)$referente_id]);
+        $activos = (int)$stmt->fetchColumn();
+
+        $niveles = $pdo->query("SELECT * FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
+
+        $nivel_actual = "";
+
+        foreach ($niveles as $nivel) {
+            if ($activos >= (int)$nivel["min_activos"]) {
+                $nivel_actual = renovarNivelKeyDesdeTexto($nivel["nivel"] ?? "");
+            }
+        }
+
+        return [
+            "nivel" => $nivel_actual,
+            "activos" => $activos
+        ];
+
+    } catch (Throwable $e) {
+        return [
+            "nivel" => "",
+            "activos" => 0
+        ];
+    }
+}
+
 function renovarPrecioNormal($meses) {
     $precios = [
         3 => 35,
@@ -1150,6 +1187,9 @@ function renovarResumenTexto($data) {
 👤 Usuario:
 ".$usuario."
 
+👥 Referente:
+".(($data["referente_nombre"] ?? "") !== "" ? $data["referente_nombre"] : "No disponible")."
+
 📅 Caduca:
 ".$caduca."
 
@@ -1226,6 +1266,9 @@ function enviarRenovacionAdmin($admin_id, $chat_id, $update_from, $data) {
 
 👤 Usuario MDPRIME:
 ".$usuario."
+
+👥 Referente:
+".(($data["referente_nombre"] ?? "") !== "" ? $data["referente_nombre"] : "No disponible")."
 
 👤 Nombre Telegram:
 ".$nombre."
@@ -1746,18 +1789,30 @@ if ($user_state === "renovar") {
     $dias = "No disponible";
     $nombre_encontrado = $usuario_mdprime;
     $nivel_actual = "";
+    $referente_nombre = "";
 
-    // Solo se considera Referidos VIP si el usuario encontrado tiene nivel VIP real.
-    // Si no tiene nivel, pasa automáticamente a tarifa estándar.
+    // Si quien renueva es un REFERENTE, usamos su propio nivel.
     if (!empty($datos["ok"]) && !empty($datos["cliente"])) {
         $nombre_encontrado = $datos["cliente"]["nombre"] ?? $usuario_mdprime;
         $caduca = $datos["resumen"]["proxima_caducidad"] ?? "Sin fecha";
         $dias = fmtDias($datos["resumen"]["dias_proxima_caducidad"] ?? null);
         $nivel_actual = renovarNivelKeyDesdeTexto($datos["nivel"]["actual"] ?? "");
-    } elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
+        $referente_nombre = $nombre_encontrado;
+    }
+
+    // Si quien renueva es un REFERIDO, usamos el nivel de su REFERENTE.
+    elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
         $nombre_encontrado = $datos["referido"]["nombre"] ?? $usuario_mdprime;
         $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
         $dias = fmtDias($datos["referido"]["dias"] ?? null);
+
+        $referente_nombre = $datos["referente"]["nombre"] ?? "";
+        $referente_id = $datos["referente"]["id"] ?? 0;
+
+        if ($referente_id) {
+            $info_nivel = obtenerNivelReferentePorId($referente_id);
+            $nivel_actual = $info_nivel["nivel"] ?? "";
+        }
     }
 
     $es_vip = ($nivel_actual !== "");
@@ -1765,6 +1820,7 @@ if ($user_state === "renovar") {
     $ren_data = [
         "usuario" => $usuario_mdprime,
         "usuario_encontrado" => $nombre_encontrado,
+        "referente_nombre" => $referente_nombre,
         "es_vip" => $es_vip,
         "nivel_actual" => $nivel_actual,
         "caduca" => $caduca,
@@ -1781,6 +1837,9 @@ if ($user_state === "renovar") {
 👤 Usuario:
 ".$nombre_encontrado."
 
+👥 Referente:
+".($referente_nombre !== "" ? $referente_nombre : "No disponible")."
+
 📅 Caduca:
 ".$caduca."
 
@@ -1789,7 +1848,7 @@ if ($user_state === "renovar") {
 
 ━━━━━━━━━━━━━━━━━━
 
-🏆 Nivel actual:
+🏆 Nivel disponible:
 ".renovarNivelTxt($nivel_actual)."
 
 ━━━━━━━━━━━━━━━━━━
