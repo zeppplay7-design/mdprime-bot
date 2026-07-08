@@ -932,6 +932,72 @@ $command = explode("@", $command)[0];
 $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
 
+/* =========================
+   PRIVACIDAD EN GRUPOS
+========================= */
+
+$chat_type = $update["message"]["chat"]["type"] ?? "private";
+$bot_username = "MDPRIME_SUPPOR_BOT";
+
+$comandos_privados = [
+    "/micuenta",
+    "/caducidad",
+    "/misreferidos",
+    "/cambiarusuario",
+    "/renovar",
+    "/pagar"
+];
+
+if ($chat_type !== "private" && in_array($command, $comandos_privados, true)) {
+
+    $start_param = ltrim($command, "/");
+    $url_privado = "https://t.me/".$bot_username."?start=".$start_param;
+
+    $mensaje = "🔒 Este comando contiene información privada.\n\n";
+    $mensaje .= "Por seguridad, solo está disponible en el chat privado de MDPRIME.\n\n";
+    $mensaje .= "Pulsa el botón de abajo para continuar.";
+
+    telegramRequest("sendMessage", [
+        "chat_id" => $chat_id,
+        "text" => $mensaje,
+        "reply_markup" => json_encode([
+            "inline_keyboard" => [
+                [
+                    [
+                        "text" => "🔒 Abrir MDPRIME Bot",
+                        "url" => $url_privado
+                    ]
+                ]
+            ]
+        ])
+    ]);
+
+    http_response_code(200);
+    exit;
+}
+
+// Si el usuario viene desde un botón de grupo tipo:
+// https://t.me/MDPRIME_SUPPOR_BOT?start=micuenta
+// convertimos /start micuenta en el comando real.
+if ($chat_type === "private" && $command === "/start" && $command_arg !== "") {
+    $start_map = [
+        "micuenta" => "/micuenta",
+        "caducidad" => "/caducidad",
+        "misreferidos" => "/misreferidos",
+        "cambiarusuario" => "/cambiarusuario",
+        "renovar" => "/renovar",
+        "pagar" => "/pagar"
+    ];
+
+    $start_key = strtolower(trim($command_arg));
+
+    if (isset($start_map[$start_key])) {
+        $command = $start_map[$start_key];
+        $command_arg = "";
+    }
+}
+
+
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
 $saved_usuario = getSavedUsuario($states, $chat_id);
