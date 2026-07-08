@@ -80,6 +80,7 @@ $token = "8445421276:AAEgTw6jjvEI98YgnN9wZsAzE6MM8ajj_AQ";
 $admin_id = "372918983";
 $bot_username = "MDPRIME_SUPPOR_BOT";
 $bot_link = "https://t.me/MDPRIME_SUPPOR_BOT";
+$payment_link = "https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N";
 $state_file = "states.json";
 $agenda_cache_file = __DIR__ . "/agenda_cache.json";
 
@@ -91,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-GRUPO-IGNORA-TEXTO-20260708-16";
+$bot_version = "MDPRIME-BOT-RENOVAR-PAGO-COMPROBANTE-20260708-19";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -206,6 +207,41 @@ function deleteMessage($chat_id, $message_id) {
     ]);
 }
 
+function forwardMessage($to_chat_id, $from_chat_id, $message_id) {
+    return telegramRequest("forwardMessage", [
+        "chat_id" => $to_chat_id,
+        "from_chat_id" => $from_chat_id,
+        "message_id" => $message_id,
+        "disable_notification" => false
+    ]);
+}
+
+function answerCallbackQuery($callback_query_id, $text = "") {
+    $data = [
+        "callback_query_id" => $callback_query_id
+    ];
+
+    if ($text !== "") {
+        $data["text"] = $text;
+    }
+
+    return telegramRequest("answerCallbackQuery", $data);
+}
+
+function editMessageText($chat_id, $message_id, $text, $reply_markup = null) {
+    $data = [
+        "chat_id" => $chat_id,
+        "message_id" => $message_id,
+        "text" => $text
+    ];
+
+    if ($reply_markup) {
+        $data["reply_markup"] = json_encode($reply_markup);
+    }
+
+    return telegramRequest("editMessageText", $data);
+}
+
 /* =========================
    FUNCIONES STATES
 ========================= */
@@ -267,6 +303,7 @@ function clearUserMode($file, &$states, $chat_id) {
     if (is_array($states[$chat_id])) {
         unset($states[$chat_id]["mode"]);
         unset($states[$chat_id]["pending_command"]);
+        unset($states[$chat_id]["renovar_data"]);
 
         if (empty($states[$chat_id])) {
             unset($states[$chat_id]);
@@ -924,6 +961,462 @@ O cambia el usuario con:
     sendLongMessage($chat_id, formatMiCuenta($data));
 }
 
+
+function renovarPrecioNormal($meses) {
+    $precios = [
+        3 => 35,
+        6 => 55,
+        12 => 80
+    ];
+
+    return $precios[(int)$meses] ?? 0;
+}
+
+function renovarPrecioReferidos($nivel, $meses) {
+    $nivel = strtolower((string)$nivel);
+
+    $precios = [
+        "cobre" => [3 => 30, 6 => 45, 12 => 65],
+        "plata" => [3 => 27, 6 => 40, 12 => 58],
+        "oro" => [3 => 25, 6 => 37, 12 => 52],
+        "platinum" => [3 => 22, 6 => 33, 12 => 45]
+    ];
+
+    return $precios[$nivel][(int)$meses] ?? 0;
+}
+
+function renovarNivelTxt($nivel) {
+    $nivel = strtolower((string)$nivel);
+
+    if ($nivel === "cobre") return "🥉 Cobre";
+    if ($nivel === "plata") return "🥈 Plata";
+    if ($nivel === "oro") return "🥇 Oro";
+    if ($nivel === "platinum") return "💠 Platinum";
+
+    return "Sin nivel";
+}
+
+function renovarDuracionKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "📦 3 meses", "callback_data" => "ren_dur_3"],
+                ["text" => "📦 6 meses", "callback_data" => "ren_dur_6"],
+                ["text" => "📦 12 meses", "callback_data" => "ren_dur_12"]
+            ],
+            [
+                ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
+            ]
+        ]
+    ];
+}
+
+function renovarOrdenNivel($nivel) {
+    $nivel = strtolower((string)$nivel);
+
+    if ($nivel === "cobre") return 1;
+    if ($nivel === "plata") return 2;
+    if ($nivel === "oro") return 3;
+    if ($nivel === "platinum") return 4;
+
+    return 0;
+}
+
+function renovarNivelKeyDesdeTexto($nivel) {
+    $nivel = strtoupper(trim((string)$nivel));
+
+    if ($nivel === "COBRE") return "cobre";
+    if ($nivel === "PLATA") return "plata";
+    if ($nivel === "ORO") return "oro";
+    if ($nivel === "PLATINUM") return "platinum";
+
+    return "";
+}
+
+function renovarNivelesPermitidos($nivel_actual) {
+    $actual = renovarOrdenNivel($nivel_actual);
+
+    $niveles = [
+        "cobre" => "🥉 Cobre",
+        "plata" => "🥈 Plata",
+        "oro" => "🥇 Oro",
+        "platinum" => "💠 Platinum"
+    ];
+
+    $permitidos = [];
+
+    foreach ($niveles as $key => $txt) {
+        if (renovarOrdenNivel($key) <= $actual) {
+            $permitidos[$key] = $txt;
+        }
+    }
+
+    return $permitidos;
+}
+
+function renovarNivelKeyboard($nivel_actual = "") {
+    $permitidos = renovarNivelesPermitidos($nivel_actual);
+
+    if (empty($permitidos)) {
+        $permitidos = ["cobre" => "🥉 Cobre"];
+    }
+
+    $rows = [];
+    $row = [];
+
+    foreach ($permitidos as $key => $txt) {
+        $row[] = ["text" => $txt, "callback_data" => "ren_lvl_".$key];
+
+        if (count($row) === 2) {
+            $rows[] = $row;
+            $row = [];
+        }
+    }
+
+    if (!empty($row)) {
+        $rows[] = $row;
+    }
+
+    $rows[] = [
+        ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
+    ];
+
+    return [
+        "inline_keyboard" => $rows
+    ];
+}
+
+function renovarConfirmarKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "✅ Solicitar renovación", "callback_data" => "ren_confirmar"]
+            ],
+            [
+                ["text" => "❌ Cancelar", "callback_data" => "ren_cancelar"]
+            ]
+        ]
+    ];
+}
+
+function renovarEstado($states, $chat_id) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        return [];
+    }
+
+    return $states[$chat_id]["renovar_data"] ?? [];
+}
+
+function guardarRenovarEstado($file, &$states, $chat_id, $data) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = "renovar_opciones";
+    $states[$chat_id]["renovar_data"] = $data;
+
+    saveStates($file, $states);
+}
+
+function limpiarRenovarEstado($file, &$states, $chat_id) {
+    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
+        unset($states[$chat_id]["mode"]);
+        unset($states[$chat_id]["pending_command"]);
+        unset($states[$chat_id]["renovar_data"]);
+
+        if (empty($states[$chat_id])) {
+            unset($states[$chat_id]);
+        }
+
+        saveStates($file, $states);
+    }
+}
+
+function renovarResumenTexto($data) {
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $esVip = !empty($data["es_vip"]);
+    $caduca = $data["caduca"] ?? "No encontrada";
+    $dias = $data["dias"] ?? "No disponible";
+
+    if ($esVip) {
+        $nivel = $data["nivel"] ?? "";
+        $precio = renovarPrecioReferidos($nivel, $meses);
+
+        return "📋 RESUMEN DE RENOVACIÓN
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario:
+".$usuario."
+
+📅 Caduca:
+".$caduca."
+
+⏳ Tiempo restante:
+".$dias."
+
+📦 Duración:
+".$meses." meses
+
+🏆 Tarifa:
+Referidos VIP
+
+".renovarNivelTxt($nivel)."
+
+💶 Precio:
+".$precio."€
+
+━━━━━━━━━━━━━━━━━━
+
+¿Deseas enviar la solicitud?";
+    }
+
+    $precio = renovarPrecioNormal($meses);
+
+    return "📋 RESUMEN DE RENOVACIÓN
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario:
+".$usuario."
+
+ℹ️ Tipo:
+Tarifa estándar
+
+📦 Duración:
+".$meses." meses
+
+💶 Precio:
+".$precio."€
+
+━━━━━━━━━━━━━━━━━━
+
+¿Deseas enviar la solicitud?";
+}
+
+function enviarRenovacionAdmin($admin_id, $chat_id, $update_from, $data) {
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $esVip = !empty($data["es_vip"]);
+    $nivel = $data["nivel"] ?? "";
+    $caduca = $data["caduca"] ?? "No encontrada";
+    $dias = $data["dias"] ?? "No disponible";
+
+    $nombre = trim(
+        ($update_from["first_name"] ?? "") . " " .
+        ($update_from["last_name"] ?? "")
+    );
+
+    $usernameTelegram = $update_from["username"] ?? "";
+
+    if ($esVip) {
+        $precio = renovarPrecioReferidos($nivel, $meses);
+        $tipo = "Referidos VIP";
+        $nivelTxt = renovarNivelTxt($nivel);
+    } else {
+        $precio = renovarPrecioNormal($meses);
+        $tipo = "Tarifa estándar";
+        $nivelTxt = "No aplica";
+    }
+
+    $admin_msg = "🔄 NUEVA SOLICITUD DE RENOVACIÓN
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario MDPRIME:
+".$usuario."
+
+👤 Nombre Telegram:
+".$nombre."
+
+📱 Usuario Telegram:
+".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+
+🆔 Chat ID:
+".$chat_id."
+
+📦 Duración:
+".$meses." meses
+
+💳 Tipo:
+".$tipo."
+
+🏆 Nivel:
+".$nivelTxt."
+
+💶 Precio:
+".$precio."€
+
+📅 Caduca:
+".$caduca."
+
+⏳ Tiempo restante:
+".$dias."
+
+🕒 Fecha:
+".date("d/m/Y H:i")."
+
+━━━━━━━━━━━━━━━━━━
+
+💬 Responder:
+
+/reply ".$chat_id." Hola ".$usuario.", hemos recibido tu solicitud de renovación.";
+
+    sendMessage($admin_id, $admin_msg, false);
+}
+
+
+function guardarComprobanteRenovacionEstado($file, &$states, $chat_id, $data) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = "esperando_comprobante_renovacion";
+    $states[$chat_id]["comprobante_renovacion"] = $data;
+
+    saveStates($file, $states);
+}
+
+function obtenerComprobanteRenovacionEstado($states, $chat_id) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        return [];
+    }
+
+    return $states[$chat_id]["comprobante_renovacion"] ?? [];
+}
+
+function limpiarComprobanteRenovacionEstado($file, &$states, $chat_id) {
+    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
+        unset($states[$chat_id]["mode"]);
+        unset($states[$chat_id]["pending_command"]);
+        unset($states[$chat_id]["comprobante_renovacion"]);
+        unset($states[$chat_id]["renovar_data"]);
+
+        if (empty($states[$chat_id])) {
+            unset($states[$chat_id]);
+        }
+
+        saveStates($file, $states);
+    }
+}
+
+function renovarPrecioDesdeData($data) {
+    $meses = (int)($data["meses"] ?? 0);
+
+    if (!empty($data["es_vip"])) {
+        return renovarPrecioReferidos($data["nivel"] ?? "", $meses);
+    }
+
+    return renovarPrecioNormal($meses);
+}
+
+function renovarTipoDesdeData($data) {
+    return !empty($data["es_vip"]) ? "Referidos VIP" : "Tarifa estándar";
+}
+
+function mensajePagoRenovacion($data) {
+    global $payment_link;
+
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $precio = renovarPrecioDesdeData($data);
+    $tipo = renovarTipoDesdeData($data);
+    $nivel = !empty($data["es_vip"]) ? renovarNivelTxt($data["nivel"] ?? "") : "No aplica";
+
+    return "💳 PAGO DE RENOVACIÓN MDPRIME
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario:
+".$usuario."
+
+📦 Duración:
+".$meses." meses
+
+💳 Tipo:
+".$tipo."
+
+🏆 Nivel:
+".$nivel."
+
+💶 Importe:
+".$precio."€
+
+━━━━━━━━━━━━━━━━━━
+
+🔗 Enlace de pago:
+".$payment_link."
+
+━━━━━━━━━━━━━━━━━━
+
+📸 Cuando termines el pago, envía aquí la captura del comprobante.
+
+Tu solicitud quedará pendiente hasta revisar el pago.";
+}
+
+function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $precio = renovarPrecioDesdeData($data);
+    $tipo = renovarTipoDesdeData($data);
+    $nivel = !empty($data["es_vip"]) ? renovarNivelTxt($data["nivel"] ?? "") : "No aplica";
+    $caduca = $data["caduca"] ?? "No encontrada";
+    $dias = $data["dias"] ?? "No disponible";
+
+    $nombre = trim(
+        ($update_from["first_name"] ?? "") . " " .
+        ($update_from["last_name"] ?? "")
+    );
+
+    $usernameTelegram = $update_from["username"] ?? "";
+
+    return "💳 NUEVO COMPROBANTE DE RENOVACIÓN
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario MDPRIME:
+".$usuario."
+
+👤 Nombre Telegram:
+".$nombre."
+
+📱 Usuario Telegram:
+".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+
+🆔 Chat ID:
+".$chat_id."
+
+📦 Duración:
+".$meses." meses
+
+💳 Tipo:
+".$tipo."
+
+🏆 Nivel:
+".$nivel."
+
+💶 Importe:
+".$precio."€
+
+📅 Caduca:
+".$caduca."
+
+⏳ Tiempo restante:
+".$dias."
+
+🕒 Fecha:
+".date("d/m/Y H:i")."
+
+━━━━━━━━━━━━━━━━━━
+
+📸 Comprobante recibido debajo.
+
+💬 Responder:
+
+/reply ".$chat_id." Hola ".$usuario.", pago recibido. Procedemos con tu renovación.";
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -937,6 +1430,108 @@ if (!$content) {
 
 $update = json_decode($content, true);
 
+if (isset($update["callback_query"])) {
+    $callback = $update["callback_query"];
+    $callback_id = $callback["id"] ?? "";
+    $callback_data = $callback["data"] ?? "";
+    $callback_message = $callback["message"] ?? [];
+    $chat_id = $callback_message["chat"]["id"] ?? "";
+    $message_id = $callback_message["message_id"] ?? "";
+    $from = $callback["from"] ?? [];
+
+    answerCallbackQuery($callback_id);
+
+    $states = loadStates($state_file);
+    $ren_data = renovarEstado($states, $chat_id);
+
+    if (strpos($callback_data, "ren_") !== 0 || empty($ren_data)) {
+        http_response_code(200);
+        exit;
+    }
+
+    if ($callback_data === "ren_cancelar") {
+        limpiarRenovarEstado($state_file, $states, $chat_id);
+        editMessageText($chat_id, $message_id, "❌ Renovación cancelada.");
+        http_response_code(200);
+        exit;
+    }
+
+    if (strpos($callback_data, "ren_dur_") === 0) {
+        $meses = (int)str_replace("ren_dur_", "", $callback_data);
+        $ren_data["meses"] = $meses;
+        guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
+
+        if (!empty($ren_data["es_vip"])) {
+            editMessageText(
+                $chat_id,
+                $message_id,
+                "🏆 REFERIDOS VIP\n\nSelecciona tu nivel de referidos:",
+                renovarNivelKeyboard($ren_data["nivel_actual"] ?? "")
+            );
+        } else {
+            editMessageText(
+                $chat_id,
+                $message_id,
+                renovarResumenTexto($ren_data),
+                renovarConfirmarKeyboard()
+            );
+        }
+
+        http_response_code(200);
+        exit;
+    }
+
+    if (strpos($callback_data, "ren_lvl_") === 0) {
+        $nivel = str_replace("ren_lvl_", "", $callback_data);
+        $nivel_actual = $ren_data["nivel_actual"] ?? "";
+
+        if (renovarOrdenNivel($nivel) > renovarOrdenNivel($nivel_actual)) {
+            answerCallbackQuery(
+                $callback_id,
+                "❌ No tienes acceso a ese nivel. Tu nivel actual es ".renovarNivelTxt($nivel_actual)."."
+            );
+            http_response_code(200);
+            exit;
+        }
+
+        $ren_data["nivel"] = $nivel;
+        guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
+
+        editMessageText(
+            $chat_id,
+            $message_id,
+            renovarResumenTexto($ren_data),
+            renovarConfirmarKeyboard()
+        );
+
+        http_response_code(200);
+        exit;
+    }
+
+    if ($callback_data === "ren_confirmar") {
+        if (empty($ren_data["meses"])) {
+            editMessageText($chat_id, $message_id, "❌ Faltan datos de la renovación. Vuelve a iniciar /renovar.");
+            limpiarRenovarEstado($state_file, $states, $chat_id);
+            http_response_code(200);
+            exit;
+        }
+
+        guardarComprobanteRenovacionEstado($state_file, $states, $chat_id, $ren_data);
+
+        editMessageText(
+            $chat_id,
+            $message_id,
+            mensajePagoRenovacion($ren_data)
+        );
+
+        http_response_code(200);
+        exit;
+    }
+
+    http_response_code(200);
+    exit;
+}
+
 if (!isset($update["message"])) {
     http_response_code(200);
     exit;
@@ -944,6 +1539,43 @@ if (!isset($update["message"])) {
 
 $chat_id = $update["message"]["chat"]["id"];
 $text = trim($update["message"]["text"] ?? "");
+$message_id = $update["message"]["message_id"] ?? null;
+
+$states = loadStates($state_file);
+$user_state = getUserMode($states, $chat_id);
+
+// Si estamos esperando el comprobante de renovación, aceptar captura/foto/documento.
+if ($user_state === "esperando_comprobante_renovacion") {
+    $tiene_comprobante = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
+
+    if ($tiene_comprobante && $message_id) {
+        $comp_data = obtenerComprobanteRenovacionEstado($states, $chat_id);
+        $from_user = $update["message"]["from"] ?? [];
+
+        sendMessage($admin_id, mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data), false);
+        forwardMessage($admin_id, $chat_id, $message_id);
+
+        limpiarComprobanteRenovacionEstado($state_file, $states, $chat_id);
+
+        sendMessage(
+            $chat_id,
+            "✅ Comprobante recibido correctamente.\n\nNuestro equipo revisará el pago y contactará contigo lo antes posible."
+        );
+
+        http_response_code(200);
+        exit;
+    }
+
+    if ($text !== "" && substr($text, 0, 1) !== "/") {
+        sendMessage(
+            $chat_id,
+            "📸 Para finalizar la renovación, envía una captura o imagen del comprobante de pago.\n\nSi quieres cancelar, escribe /start."
+        );
+
+        http_response_code(200);
+        exit;
+    }
+}
 
 if ($text === "") {
     http_response_code(200);
@@ -1108,39 +1740,46 @@ if ($user_state === "renovar") {
 
     $usuario_mdprime = trim($text);
 
-    $nombre = trim(
-        ($update["message"]["from"]["first_name"] ?? "") . " " .
-        ($update["message"]["from"]["last_name"] ?? "")
-    );
-
-    $usernameTelegram = $update["message"]["from"]["username"] ?? "";
-
-    // Consultar datos del cliente
     $datos = consultarClienteApi($usuario_mdprime);
 
     $caduca = "No encontrada";
     $dias = "No disponible";
+    $nombre_encontrado = $usuario_mdprime;
+    $nivel_actual = "";
 
-    if (!empty($datos["ok"]) && !empty($datos["referido"])) {
+    // Solo se considera Referidos VIP si el usuario encontrado tiene nivel VIP real.
+    // Si no tiene nivel, pasa automáticamente a tarifa estándar.
+    if (!empty($datos["ok"]) && !empty($datos["cliente"])) {
+        $nombre_encontrado = $datos["cliente"]["nombre"] ?? $usuario_mdprime;
+        $caduca = $datos["resumen"]["proxima_caducidad"] ?? "Sin fecha";
+        $dias = fmtDias($datos["resumen"]["dias_proxima_caducidad"] ?? null);
+        $nivel_actual = renovarNivelKeyDesdeTexto($datos["nivel"]["actual"] ?? "");
+    } elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
+        $nombre_encontrado = $datos["referido"]["nombre"] ?? $usuario_mdprime;
         $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
         $dias = fmtDias($datos["referido"]["dias"] ?? null);
     }
 
-    $admin_msg = "🔄 NUEVA SOLICITUD DE RENOVACIÓN
+    $es_vip = ($nivel_actual !== "");
+
+    $ren_data = [
+        "usuario" => $usuario_mdprime,
+        "usuario_encontrado" => $nombre_encontrado,
+        "es_vip" => $es_vip,
+        "nivel_actual" => $nivel_actual,
+        "caduca" => $caduca,
+        "dias" => $dias
+    ];
+
+    guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
+
+    if ($es_vip) {
+        $msg = "✅ Usuario encontrado
 
 ━━━━━━━━━━━━━━━━━━
 
-👤 Usuario MDPRIME:
-".$usuario_mdprime."
-
-👤 Nombre Telegram:
-".$nombre."
-
-📱 Usuario Telegram:
-".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
-
-🆔 Chat ID:
-".$chat_id."
+👤 Usuario:
+".$nombre_encontrado."
 
 📅 Caduca:
 ".$caduca."
@@ -1148,23 +1787,28 @@ if ($user_state === "renovar") {
 ⏳ Tiempo restante:
 ".$dias."
 
-🕒 Fecha:
-".date("d/m/Y H:i")."
+━━━━━━━━━━━━━━━━━━
+
+🏆 Nivel actual:
+".renovarNivelTxt($nivel_actual)."
 
 ━━━━━━━━━━━━━━━━━━
 
-💬 Responder:
+Selecciona la duración de tu renovación:";
+    } else {
+        $msg = "ℹ️ Tu usuario no pertenece al programa de Referidos VIP.
 
-/reply ".$chat_id." Hola ".$usuario_mdprime.", hemos recibido tu solicitud de renovación.";
+La renovación se realizará con tarifa estándar.
 
-    sendMessage($admin_id, $admin_msg, false);
+━━━━━━━━━━━━━━━━━━
 
-    clearUserMode($state_file, $states, $chat_id);
+👤 Usuario escrito:
+".$usuario_mdprime."
 
-    sendMessage(
-        $chat_id,
-        "✅ Hemos recibido tu solicitud de renovación.\n\nNuestro equipo contactará contigo lo antes posible."
-    );
+Selecciona la duración:";
+    }
+
+    sendInlineMessage($chat_id, $msg, renovarDuracionKeyboard());
 
     http_response_code(200);
     exit;
@@ -1379,8 +2023,8 @@ case "/renovar":
     $nombre = trim(($update["message"]["from"]["first_name"] ?? "") . " " . ($update["message"]["from"]["last_name"] ?? ""));
     $usernameTelegram = $update["message"]["from"]["username"] ?? "";
 
-    $texto = "🔄 SOLICITUD DE RENOVACIÓN\n\n";
-    $texto .= "Para continuar, envíame tu usuario de MDPRIME.\n\n";
+    $texto = "🔄 RENOVACIÓN MDPRIME\n\n";
+    $texto .= "Introduce tu usuario de MDPRIME para comprobar tu tipo de cuenta.\n\n";
     $texto .= "Ejemplo:\n";
     $texto .= "Pepito44\n\n";
     $texto .= "━━━━━━━━━━━━━━━━━━━━━━\n";
