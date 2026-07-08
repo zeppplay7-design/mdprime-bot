@@ -5,6 +5,13 @@
 ========================= */
 if (isset($_SERVER["REQUEST_URI"])) {
 
+    if (strpos($_SERVER["REQUEST_URI"], "ping") !== false) {
+        header("Content-Type: text/plain; charset=utf-8");
+        echo "OK";
+        exit;
+    }
+
+
     if (strpos($_SERVER["REQUEST_URI"], "fix_fechas_railway.php") !== false) {
         header("Content-Type: text/plain; charset=utf-8");
 
@@ -82,7 +89,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-OPTIMIZADO-20260707-11";
+$bot_version = "MDPRIME-BOT-SILENCIOSO-20260708-12";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -115,11 +122,7 @@ function sendMessage($chat_id, $text, $keyboard = true) {
         "disable_notification" => true
     ];
 
-    // Teclado personalizado solo en chats privados.
-    // En grupos se usa únicamente el menú de comandos de Telegram (/ o botón de comandos).
-    $es_chat_privado = ((int)$chat_id > 0);
-
-    if ($keyboard && $es_chat_privado) {
+    if ($keyboard) {
         $data["reply_markup"] = json_encode([
             "keyboard" => [
                 [
@@ -148,8 +151,7 @@ function sendMessage($chat_id, $text, $keyboard = true) {
                 ]
             ],
             "resize_keyboard" => true,
-            "one_time_keyboard" => false,
-            "is_persistent" => true
+            "one_time_keyboard" => false
         ]);
     }
 
@@ -925,7 +927,6 @@ if (!isset($update["message"])) {
 }
 
 $chat_id = $update["message"]["chat"]["id"];
-$message_id = $update["message"]["message_id"] ?? null;
 $text = trim($update["message"]["text"] ?? "");
 
 if ($text === "") {
@@ -938,93 +939,6 @@ $command = explode("@", $command)[0];
 
 $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
-
-/* =========================
-   PRIVACIDAD EN GRUPOS
-========================= */
-
-$chat_type = $update["message"]["chat"]["type"] ?? "private";
-$bot_username = "MDPRIME_SUPPOR_BOT";
-
-$comandos_privados = [
-    "/micuenta",
-    "/caducidad",
-    "/misreferidos",
-    "/cambiarusuario",
-    "/renovar",
-    "/pagar"
-];
-
-if ($chat_type !== "private" && in_array($command, $comandos_privados, true)) {
-
-    $start_param = ltrim($command, "/");
-    $url_privado = "https://t.me/".$bot_username."?start=".$start_param;
-
-    $mensaje = "🔒 Este comando contiene información privada.\n\n";
-    $mensaje .= "Por seguridad, solo está disponible en el chat privado de MDPRIME.\n\n";
-    $mensaje .= "Pulsa el botón de abajo para continuar.";
-
-    $aviso = telegramRequest("sendMessage", [
-        "chat_id" => $chat_id,
-        "text" => $mensaje,
-        "disable_notification" => true,
-        "reply_to_message_id" => $message_id,
-        "allow_sending_without_reply" => true,
-        "reply_markup" => json_encode([
-            "inline_keyboard" => [
-                [
-                    [
-                        "text" => "🔒 Abrir MDPRIME Bot",
-                        "url" => $url_privado
-                    ]
-                ]
-            ]
-        ])
-    ]);
-
-    // Mantener el grupo limpio:
-    // 1) Borrar al momento el comando privado escrito por el usuario.
-    // 2) Dejar unos segundos el aviso con botón y después borrarlo.
-    // IMPORTANTE: para borrar mensajes de usuarios, el bot debe ser administrador del grupo
-    // con permiso para eliminar mensajes.
-
-    if ($message_id) {
-        deleteMessage($chat_id, $message_id);
-    }
-
-    sleep(5);
-
-    $aviso_id = $aviso["result"]["message_id"] ?? null;
-
-    if ($aviso_id) {
-        deleteMessage($chat_id, $aviso_id);
-    }
-
-    http_response_code(200);
-    exit;
-}
-
-// Si el usuario viene desde un botón de grupo tipo:
-// https://t.me/MDPRIME_SUPPOR_BOT?start=micuenta
-// convertimos /start micuenta en el comando real.
-if ($chat_type === "private" && $command === "/start" && $command_arg !== "") {
-    $start_map = [
-        "micuenta" => "/micuenta",
-        "caducidad" => "/caducidad",
-        "misreferidos" => "/misreferidos",
-        "cambiarusuario" => "/cambiarusuario",
-        "renovar" => "/renovar",
-        "pagar" => "/pagar"
-    ];
-
-    $start_key = strtolower(trim($command_arg));
-
-    if (isset($start_map[$start_key])) {
-        $command = $start_map[$start_key];
-        $command_arg = "";
-    }
-}
-
 
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
@@ -1297,7 +1211,7 @@ Recomienda MDPRIME a tus amigos y gana recompensas por cada nuevo cliente que co
 
 ━━━━━━━━━━━━━━━━━━
 
-✅ Recomiendas MDPRIME P2P
+✅ Recomiendas MDPRIME
 ✅ Tu amigo contrata
 ✅ Ganas mejores beneficios";
 
@@ -1343,7 +1257,7 @@ Elige la app que más te guste.
 La V9 es la más nueva.
 
 🔥 V9 → 6713896
-📺 OTT → 4269494
+📺 OTT → 7669716
 ⚡ V8 → 6541023";
 
         sendMessage($chat_id, $msg);
@@ -1360,11 +1274,12 @@ La V9 es la más nueva.
         } else {
             setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", $command);
 
-            sendMessage($chat_id, "👤 Introduce tu usuario de p2p.
+            sendMessage($chat_id, "👤 Introduce tu usuario MDPRIME.
 
 Puede ser:
 
 • Tu nombre de referente
+• Tu usuario de Telegram registrado
 • El nombre del referido
 
 Ejemplo:
@@ -1379,7 +1294,7 @@ Canelobel");
 
         sendMessage($chat_id, "🔄 CAMBIAR USUARIO
 
-Introduce el nuevo usuario p2p que quieres guardar.");
+Introduce el nuevo usuario MDPRIME que quieres guardar.");
 
         break;
 
@@ -1391,7 +1306,7 @@ case "/renovar":
     $usernameTelegram = $update["message"]["from"]["username"] ?? "";
 
     $texto = "🔄 SOLICITUD DE RENOVACIÓN\n\n";
-    $texto .= "Para continuar, envíame tu usuario de P2P.\n\n";
+    $texto .= "Para continuar, envíame tu usuario de MDPRIME.\n\n";
     $texto .= "Ejemplo:\n";
     $texto .= "Pepito44\n\n";
     $texto .= "━━━━━━━━━━━━━━━━━━━━━━\n";
