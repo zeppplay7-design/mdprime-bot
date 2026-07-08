@@ -977,18 +977,22 @@ if ($chat_type !== "private" && in_array($command, $comandos_privados, true)) {
         ])
     ]);
 
-    // Mantener el grupo limpio: borrar el aviso del bot y el comando del usuario.
-    // Para borrar el comando del usuario, el bot debe ser administrador del grupo con permiso de borrar mensajes.
-    sleep(10);
+    // Mantener el grupo limpio:
+    // 1) Borrar al momento el comando privado escrito por el usuario.
+    // 2) Dejar unos segundos el aviso con botón y después borrarlo.
+    // IMPORTANTE: para borrar mensajes de usuarios, el bot debe ser administrador del grupo
+    // con permiso para eliminar mensajes.
+
+    if ($message_id) {
+        deleteMessage($chat_id, $message_id);
+    }
+
+    sleep(5);
 
     $aviso_id = $aviso["result"]["message_id"] ?? null;
 
     if ($aviso_id) {
         deleteMessage($chat_id, $aviso_id);
-    }
-
-    if ($message_id) {
-        deleteMessage($chat_id, $message_id);
     }
 
     http_response_code(200);
