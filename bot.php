@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V43-FINAL-CONFIRMACION-SESION-AVISOS-20260709";
+$bot_version = "MDPRIME-BOT-V44-CONFIRMACION-REAL-SESION-AVISOS-20260709";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -2070,7 +2070,7 @@ function tecladoConfirmarUsuarioMdprime() {
     ];
 }
 
-function resumenConfirmacionUsuario($usuario, $data) {
+function resumenConfirmacionUsuarioMdprime($usuario, $data) {
     if (!empty($data["referido"])) {
         $r = $data["referido"];
         $referente = $data["referente"]["nombre"] ?? "Sin referente";
@@ -2126,6 +2126,8 @@ Cliente normal
 
     if (!empty($data["cliente"])) {
         $c = $data["cliente"];
+        $res = $data["resumen"] ?? [];
+        $nivel = $data["nivel"]["actual"] ?? "Sin nivel";
 
         return "🔎 USUARIO ENCONTRADO
 
@@ -2138,10 +2140,13 @@ Cliente normal
 Referente VIP
 
 👥 Referidos activos:
-".($data["resumen"]["activos"] ?? "0")."
+".($res["activos"] ?? "0")."
 
 🏆 Nivel:
-".($data["nivel"]["actual"] ?? "Sin nivel")."
+".$nivel."
+
+📅 Próxima caducidad:
+".($res["proxima_caducidad"] ?? "Sin fecha")."
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2150,34 +2155,16 @@ Referente VIP
 ⚠️ Si no es correcta, pulsa No y escribe tu usuario nuevamente.";
     }
 
-    return "🔎 Hemos encontrado este usuario.
-
-👤 Usuario:
-".$usuario."
-
-¿Confirmas que esta cuenta es tuya?";
+    return "🔎 Hemos encontrado este usuario.\n\n👤 Usuario:\n".$usuario."\n\n¿Confirmas que esta cuenta es tuya?";
 }
 
 function mdprimeSesionActivaTexto($chat_id, $states) {
-    $usuario = "";
-
-    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
-        $usuario = trim($states[$chat_id]["usuario_mdprime"] ?? "");
-    }
-
+    $usuario = getSavedUsuario($states, $chat_id);
     if ($usuario === "") {
         return "";
     }
 
-    return "👤 Cuenta vinculada actualmente:
-".$usuario."
-
-Si deseas cambiarla utiliza:
-/cambiarusuario
-
-━━━━━━━━━━━━━━━━━━
-
-";
+    return "👤 Cuenta vinculada actualmente:\n".$usuario."\n\nSi esta no es tu cuenta, utiliza:\n/cambiarusuario\n\n━━━━━━━━━━━━━━━━━━\n\n";
 }
 
 function mensajeAvisoCaducidadMdprime($usuario, $tipo, $dias, $fecha) {
@@ -2215,18 +2202,15 @@ function mensajeAvisoCaducidadMdprime($usuario, $tipo, $dias, $fecha) {
 ━━━━━━━━━━━━━━━━━━
 
 Para renovar pulsa:
-
 /renovar
 
 Si tienes cualquier problema, pulsa:
-
 /soporte";
 }
 
 function enviarAvisosCaducidadMdprime() {
-    global $bot_version, $state_file;
+    global $state_file, $bot_version;
 
-    $avisos = [7, 3, 1, 0];
     $resumen = [
         "ok" => true,
         "version" => $bot_version,
@@ -2252,62 +2236,14 @@ function enviarAvisosCaducidadMdprime() {
         } catch (Throwable $e) {}
 
         $states = loadStates($state_file);
+        $mapUsuarios = [];
 
-    if ($callback_data === "confirm_usuario_si" || $callback_data === "confirm_usuario_no") {
-        if ($callback_data === "confirm_usuario_no") {
-            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
-                $states[$chat_id] = [];
-            }
-
-            $states[$chat_id]["mode"] = "esperando_usuario_mdprime";
-            unset($states[$chat_id]["usuario_pendiente"]);
-            saveStates($state_file, $states);
-
-            answerCallbackQuery($callback_id, "Escribe tu usuario de nuevo.");
-
-            sendMessage($chat_id, "✏️ Escribe de nuevo tu usuario MDPRIME.");
-            http_response_code(200);
-            exit;
+        foreach ($states as $chatId => $st) {
+            if (!is_array($st)) continue;
+            $u = trim($st["usuario_mdprime"] ?? "");
+            if ($u === "") continue;
+            $mapUsuarios[mb_strtolower($u, "UTF-8")][] = (string)$chatId;
         }
-
-        $usuario_confirmado = $states[$chat_id]["usuario_pendiente"] ?? "";
-
-        if ($usuario_confirmado === "") {
-            answerCallbackQuery($callback_id, "No hay usuario pendiente.");
-            sendMessage($chat_id, "⚠️ No hay usuario pendiente de confirmar. Escribe /micuenta para empezar de nuevo.");
-            http_response_code(200);
-            exit;
-        }
-
-        $pending = $states[$chat_id]["pending_command"] ?? "/micuenta";
-        $data = consultarClienteApi($usuario_confirmado);
-
-        saveUsuarioMdprime($state_file, $states, $chat_id, $usuario_confirmado);
-
-        unset($states[$chat_id]["mode"], $states[$chat_id]["usuario_pendiente"]);
-        $states[$chat_id]["usuario_mdprime"] = $usuario_confirmado;
-        saveStates($state_file, $states);
-
-        answerCallbackQuery($callback_id, "Usuario confirmado.");
-
-        sendMessage($chat_id, "✅ Usuario confirmado:
-".$usuario_confirmado."
-
-Tu usuario ha quedado vinculado correctamente.");
-
-        if (!empty($data["ok"])) {
-            if ($pending === "/caducidad") {
-                sendLongMessage($chat_id, formatCaducidad($data));
-            } elseif ($pending === "/misreferidos") {
-                sendLongMessage($chat_id, formatMisReferidos($data));
-            } else {
-                sendLongMessage($chat_id, formatMiCuenta($data));
-            }
-        }
-
-        http_response_code(200);
-        exit;
-    }
 
         $tablas = [
             ["tabla" => "referidos", "tipo" => "Referido VIP"],
@@ -2332,51 +2268,29 @@ Tu usuario ha quedado vinculado correctamente.");
                 foreach ($rows as $row) {
                     $usuario = trim($row["nombre"] ?? "");
                     $cad = $row["fecha_caducidad"] ?? "";
-
-                    if ($usuario === "" || $cad === "") {
-                        continue;
-                    }
+                    if ($usuario === "" || $cad === "") continue;
 
                     $dias = (int)floor((strtotime($cad) - strtotime(date("Y-m-d"))) / 86400);
+                    if (!in_array($dias, [0,1,3,7], true)) continue;
 
-                    if (!in_array($dias, $avisos, true)) {
-                        continue;
-                    }
+                    $key = mb_strtolower($usuario, "UTF-8");
+                    if (empty($mapUsuarios[$key])) continue;
 
-                    foreach ($states as $chatId => $st) {
-                        if (!is_array($st)) {
-                            continue;
-                        }
-
-                        $guardado = trim($st["usuario_mdprime"] ?? "");
-
-                        if ($guardado === "") {
-                            continue;
-                        }
-
-                        if (mb_strtolower($guardado, "UTF-8") !== mb_strtolower($usuario, "UTF-8")) {
-                            continue;
-                        }
-
+                    foreach ($mapUsuarios[$key] as $chatId) {
                         $chk = $pdo->prepare("SELECT id FROM avisos_caducidad_bot WHERE usuario=? AND tipo_tabla=? AND dias=? AND fecha_caducidad=? AND chat_id=? LIMIT 1");
                         $chk->execute([$usuario, $tabla, $dias, $cad, (string)$chatId]);
+                        if ($chk->fetch()) continue;
 
-                        if ($chk->fetch()) {
-                            continue;
-                        }
-
-                        $texto = mensajeAvisoCaducidadMdprime($usuario, $tipo, $dias, $cad);
-                        $sent = sendMessage($chatId, $texto);
+                        $sent = sendMessage($chatId, mensajeAvisoCaducidadMdprime($usuario, $tipo, $dias, $cad));
 
                         if (!empty($sent["ok"])) {
                             $ins = $pdo->prepare("INSERT IGNORE INTO avisos_caducidad_bot(usuario,tipo_tabla,dias,fecha_caducidad,chat_id) VALUES(?,?,?,?,?)");
                             $ins->execute([$usuario, $tabla, $dias, $cad, (string)$chatId]);
-
                             $resumen["enviados"]++;
                             $resumen["detalle"][] = $usuario." · ".$tipo." · ".$dias." días";
                         } else {
                             $resumen["errores"]++;
-                            $resumen["detalle"][] = "No enviado: ".$usuario." · chat ".$chatId;
+                            $resumen["detalle"][] = "Error enviando a ".$usuario." · chat ".$chatId;
                         }
                     }
                 }
@@ -2426,6 +2340,49 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+
+    if ($callback_data === "confirm_usuario_si" || $callback_data === "confirm_usuario_no") {
+        if ($callback_data === "confirm_usuario_no") {
+            $states[$chat_id]["mode"] = "esperando_usuario_mdprime";
+            unset($states[$chat_id]["usuario_pendiente"]);
+            saveStates($state_file, $states);
+
+            answerCallbackQuery($callback_id, "Escribe tu usuario de nuevo.");
+            sendMessage($chat_id, "✏️ Escribe de nuevo tu usuario MDPRIME.");
+            http_response_code(200);
+            exit;
+        }
+
+        $usuario_confirmado = $states[$chat_id]["usuario_pendiente"] ?? "";
+
+        if ($usuario_confirmado === "") {
+            answerCallbackQuery($callback_id, "No hay usuario pendiente.");
+            sendMessage($chat_id, "⚠️ No hay usuario pendiente de confirmar. Escribe /micuenta para empezar de nuevo.");
+            http_response_code(200);
+            exit;
+        }
+
+        $pending = $states[$chat_id]["pending_command"] ?? "/micuenta";
+        $data = consultarClienteApi($usuario_confirmado);
+
+        saveUsuarioMdprime($state_file, $states, $chat_id, $usuario_confirmado);
+
+        answerCallbackQuery($callback_id, "Usuario confirmado.");
+        sendMessage($chat_id, "✅ Usuario confirmado:\n".$usuario_confirmado."\n\nTu usuario ha quedado vinculado correctamente.");
+
+        if (!empty($data["ok"])) {
+            if ($pending === "/caducidad") {
+                sendLongMessage($chat_id, formatCaducidad($data));
+            } elseif ($pending === "/misreferidos") {
+                sendLongMessage($chat_id, formatMisReferidos($data));
+            } else {
+                sendLongMessage($chat_id, formatMiCuenta($data));
+            }
+        }
+
+        http_response_code(200);
+        exit;
+    }
 
     if (strpos($callback_data, "admin_ren_ok_") === 0 || strpos($callback_data, "admin_ren_no_") === 0 || strpos($callback_data, "admin_ren_chat_") === 0) {
         if ((string)$chat_id !== (string)$admin_id) {
@@ -2854,7 +2811,7 @@ if ($user_state === "esperando_usuario_mdprime") {
 
     sendInlineMessage(
         $chat_id,
-        resumenConfirmacionUsuario($usuario, $data),
+        resumenConfirmacionUsuarioMdprime($usuario, $data),
         tecladoConfirmarUsuarioMdprime()
     );
 
@@ -2863,15 +2820,15 @@ if ($user_state === "esperando_usuario_mdprime") {
 }
 
 if ($user_state === "confirmando_usuario_mdprime") {
+
     sendMessage($chat_id, "⚠️ Tienes un usuario pendiente de confirmar.
 
-Pulsa:
+Pulsa uno de los botones:
 
 ✅ Sí, es mi usuario
 
-o
-
 ✏️ No, escribir otro");
+
     http_response_code(200);
     exit;
 }
@@ -2918,30 +2875,10 @@ switch ($command) {
 
         $res = enviarAvisosCaducidadMdprime();
 
-        $msg = "🔔 AVISOS DE CADUCIDAD
-
-Versión:
-".$bot_version."
-
-Enviados:
-".($res["enviados"] ?? 0)."
-
-Errores:
-".($res["errores"] ?? 0);
+        $msg = "🔔 AVISOS DE CADUCIDAD\n\nVersión:\n".$bot_version."\n\nEnviados:\n".($res["enviados"] ?? 0)."\n\nErrores:\n".($res["errores"] ?? 0);
 
         if (!empty($res["detalle"])) {
-            $msg .= "
-
-Detalle:
-".implode("
-", array_slice($res["detalle"], 0, 20));
-        }
-
-        if (empty($res["ok"]) && !empty($res["error"])) {
-            $msg .= "
-
-Error:
-".$res["error"];
+            $msg .= "\n\nDetalle:\n".implode("\n", array_slice($res["detalle"], 0, 20));
         }
 
         sendLongMessage($chat_id, $msg);
