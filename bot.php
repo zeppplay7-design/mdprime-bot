@@ -2453,6 +2453,22 @@ function nuevoDuracionKeyboard() {
     ];
 }
 
+function nuevoConfirmarUsuarioKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "✅ Sí, usar este usuario", "callback_data" => "nuevo_confirm_si"]
+            ],
+            [
+                ["text" => "✏️ No, escribir otro", "callback_data" => "nuevo_confirm_no"]
+            ],
+            [
+                ["text" => "❌ Cancelar", "callback_data" => "nuevo_cancelar"]
+            ]
+        ]
+    ];
+}
+
 function guardarNuevoEstado($file, &$states, $chat_id, $data, $mode = "nuevo_opciones") {
     if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
         $states[$chat_id] = [];
@@ -3010,6 +3026,45 @@ Tu usuario ha quedado vinculado correctamente.");
             exit;
         }
 
+        if ($callback_data === "nuevo_confirm_no") {
+            guardarNuevoEstado($state_file, $states, $chat_id, [], "nuevo_usuario");
+            editMessageText($chat_id, $message_id, "✏️ Perfecto.
+
+Escribe nuevamente el nombre de usuario que quieres crear.
+
+Ejemplo:
+MiguelTV");
+            http_response_code(200);
+            exit;
+        }
+
+        if ($callback_data === "nuevo_confirm_si") {
+            guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data, "nuevo_opciones");
+            editMessageText(
+                $chat_id,
+                $message_id,
+                "🆕 CUENTA NUEVA MDPRIME
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario confirmado:
+".($nuevo_data["usuario"] ?? "Sin usuario")."
+
+🔐 Contraseña:
+La genera nuestro panel. No se puede elegir manualmente.
+
+⚠️ Tu cuenta NO se creará todavía.
+Primero debes elegir plan, pagar y enviar el comprobante.
+
+━━━━━━━━━━━━━━━━━━
+
+Selecciona la duración:",
+                nuevoDuracionKeyboard()
+            );
+            http_response_code(200);
+            exit;
+        }
+
         if (strpos($callback_data, "nuevo_dur_") === 0) {
             $meses = (int)str_replace("nuevo_dur_", "", $callback_data);
             $nuevo_data["meses"] = $meses;
@@ -3419,11 +3474,16 @@ if ($user_state === "confirmando_usuario_mdprime") {
 if ($user_state === "nuevo_usuario") {
 
     $usuario_nuevo = trim($text);
-    $usuario_nuevo = str_replace(["\r", "\n", "\t"], " ", $usuario_nuevo);
+    $usuario_nuevo = str_replace(["
+", "
+", "	"], " ", $usuario_nuevo);
     $usuario_nuevo = preg_replace('/\s+/', ' ', $usuario_nuevo);
 
     if ($usuario_nuevo === "" || substr($usuario_nuevo, 0, 1) === "/") {
-        sendMessage($chat_id, "👤 Escribe el nombre de usuario que quieres crear.\n\nEjemplo:\nMiguelTV");
+        sendMessage($chat_id, "👤 Escribe el nombre de usuario que quieres crear.
+
+Ejemplo:
+MiguelTV");
         http_response_code(200);
         exit;
     }
@@ -3431,7 +3491,11 @@ if ($user_state === "nuevo_usuario") {
     $existe = consultarClienteApi($usuario_nuevo);
     if (!empty($existe["ok"])) {
         limpiarNuevoEstado($state_file, $states, $chat_id);
-        sendMessage($chat_id, "⚠️ Ese usuario ya aparece en la base de datos.\n\nPara esa cuenta debes usar /renovar.\n\nSi quieres crear una cuenta nueva, escribe /nuevo y pon otro usuario.");
+        sendMessage($chat_id, "⚠️ Ese usuario ya aparece en la base de datos.
+
+Para esa cuenta debes usar /renovar.
+
+Si quieres crear una cuenta nueva, escribe /nuevo y pon otro usuario.");
         http_response_code(200);
         exit;
     }
@@ -3440,12 +3504,23 @@ if ($user_state === "nuevo_usuario") {
         "usuario" => $usuario_nuevo
     ];
 
-    guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
+    guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data, "nuevo_confirmar_usuario");
 
     sendInlineMessage(
         $chat_id,
-        "🆕 CUENTA NUEVA MDPRIME\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".$usuario_nuevo."\n\n🔐 Contraseña:\nLa genera nuestro panel. No se puede elegir manualmente.\n\n⚠️ Tu cuenta NO se creará todavía.\nPrimero debes elegir plan, pagar y enviar el comprobante.\n\n━━━━━━━━━━━━━━━━━━\n\nSelecciona la duración:",
-        nuevoDuracionKeyboard()
+        "🔍 CONFIRMA TU NUEVO USUARIO
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario elegido:
+".$usuario_nuevo."
+
+⚠️ Comprueba que está correctamente escrito.
+
+Este será el nombre que se usará para crear la cuenta cuando el pago sea aprobado.
+
+¿Deseas usar este usuario?",
+        nuevoConfirmarUsuarioKeyboard()
     );
 
     http_response_code(200);
