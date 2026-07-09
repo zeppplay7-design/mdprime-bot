@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-CREAR-NORMAL-SI-NO-EXISTE-V37-20260709";
+$bot_version = "MDPRIME-BOT-MENU-PRO-V39-20260709";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -129,28 +129,31 @@ function sendMessage($chat_id, $text, $keyboard = true) {
         $data["reply_markup"] = json_encode([
             "keyboard" => [
                 [
-                    ["text" => "/planes"],
-                    ["text" => "/referidos"]
-                ],
-                [
                     ["text" => "/micuenta"],
                     ["text" => "/caducidad"]
                 ],
                 [
                     ["text" => "/misreferidos"],
-                    ["text" => "/cambiarusuario"]
+                    ["text" => "/planes"]
                 ],
                 [
-                    ["text" => "/queesreferidos"],
-                    ["text" => "/apps"]
+                    ["text" => "/referidos"],
+                    ["text" => "/queesreferidos"]
                 ],
                 [
-                    ["text" => "/agenda"],
-                    ["text" => "/renovar"]
+                    ["text" => "/renovar"],
+                    ["text" => "/comorenovar"]
+                ],
+                [
+                    ["text" => "/apps"],
+                    ["text" => "/agenda"]
                 ],
                 [
                     ["text" => "/pagar"],
                     ["text" => "/soporte"]
+                ],
+                [
+                    ["text" => "/cambiarusuario"]
                 ]
             ],
             "resize_keyboard" => true,
@@ -2013,6 +2016,46 @@ function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
 /reply ".$chat_id." Hola ".$usuario.", pago recibido. Procedemos con tu renovación.";
 }
 
+
+function mensajeComoRenovar() {
+    return "💳 CÓMO RENOVAR POR EL BOT
+
+━━━━━━━━━━━━━━━━━━
+
+1️⃣ Pulsa el comando /renovar.
+
+2️⃣ Escribe tu usuario de MDPRIME.
+
+3️⃣ El bot detectará automáticamente si eres:
+👑 Referido VIP
+👤 Cliente normal
+
+4️⃣ Elige la duración de tu renovación:
+📦 3 meses
+📦 6 meses
+📦 12 meses
+
+5️⃣ Accederás al enlace de pago correspondiente.
+
+6️⃣ Una vez realizado el pago, envía el comprobante a través del bot.
+
+7️⃣ Cuando el pago sea revisado y aprobado, la renovación se aplicará automáticamente a tu cuenta y recibirás una confirmación.
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ IMPORTANTE
+
+• Es obligatorio enviar el comprobante de pago para poder validar la renovación.
+• Hasta que el pago no sea aprobado, la renovación no se aplicará.
+• Si tu usuario no aparece como referido, el bot te mostrará los precios normales.
+
+━━━━━━━━━━━━━━━━━━
+
+🛠 ¿Tienes alguna duda o has tenido algún problema durante el proceso?
+
+Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo antes posible.";
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -2517,41 +2560,41 @@ switch ($command) {
 
 📋 MENÚ PRINCIPAL
 
-💎 /planes
-Ver todos los planes disponibles.
-
-👥 /referidos
-Consultar tarifas del programa de referidos.
-
-❓ /queesreferidos
-¿Qué es el programa de referidos?
-
 👤 /micuenta
 Consultar tu cuenta MDPRIME.
 
 📅 /caducidad
-Ver caducidad de tu cuenta o referidos.
+Ver la caducidad de tu cuenta.
 
 👥 /misreferidos
 Ver tus referidos activos e inactivos.
 
-🔄 /cambiarusuario
-Cambiar el usuario guardado.
+💎 /planes
+Ver planes normales.
 
-📲 /apps
-Descargar aplicaciones.
+🏆 /referidos
+Consultar tarifas del programa Referidos VIP.
 
-🏆 /agenda
-Agenda deportiva actualizada.
+❓ /queesreferidos
+Explicación del programa de referidos.
 
 🔄 /renovar
 Solicitar una renovación.
 
-💳 /pagar
-Realizar un pago.
+💳 /comorenovar
+Instrucciones para renovar paso a paso.
 
-🛠 /soporte
-Contactar con soporte.
+📲 /apps
+Descargar aplicaciones.
+
+🏅 /agenda
+Agenda deportiva actualizada.
+
+💳 /pagar
+Acceso directo al pago.
+
+🆘 /soporte
+Contactar con soporte si tienes dudas o problemas.
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2683,6 +2726,11 @@ Canelobel");
 
 Introduce el nuevo usuario MDPRIME que quieres guardar.");
 
+        break;
+
+case "/comorenovar":
+
+        sendMessage($chat_id, mensajeComoRenovar());
         break;
 
 case "/renovar":
