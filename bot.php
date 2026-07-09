@@ -449,49 +449,6 @@ function sendInlineMessage($chat_id, $text, $reply_markup = null) {
     return telegramRequest("sendMessage", $data);
 }
 
-
-function htg($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
-}
-
-function tgCode($value) {
-    $value = trim((string)$value);
-    if ($value === "") {
-        $value = "No disponible";
-    }
-    return "<code>".htg($value)."</code>";
-}
-
-function sendInlineHtmlMessage($chat_id, $text, $reply_markup = null) {
-    $data = [
-        "chat_id" => $chat_id,
-        "text" => $text,
-        "parse_mode" => "HTML",
-        "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
-    ];
-
-    if ($reply_markup) {
-        $data["reply_markup"] = json_encode($reply_markup);
-    }
-
-    return telegramRequest("sendMessage", $data);
-}
-
-function editMessageTextHtml($chat_id, $message_id, $text, $reply_markup = null) {
-    $data = [
-        "chat_id" => $chat_id,
-        "message_id" => $message_id,
-        "text" => $text,
-        "parse_mode" => "HTML"
-    ];
-
-    if ($reply_markup) {
-        $data["reply_markup"] = json_encode($reply_markup);
-    }
-
-    return telegramRequest("editMessageText", $data);
-}
-
 function sendLongMessage($chat_id, $text, $keyboard = true) {
     $max = 3900;
 
@@ -2376,6 +2333,7 @@ function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
     $tipo = renovarTipoDesdeData($data);
     $nivel = !empty($data["es_vip"]) ? renovarNivelTxt($data["nivel"] ?? "") : "No aplica";
     $caduca = $data["caduca"] ?? "No encontrada";
+    $dias = $data["dias"] ?? "No disponible";
 
     $nombre = trim(
         ($update_from["first_name"] ?? "") . " " .
@@ -2383,48 +2341,249 @@ function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
     );
 
     $usernameTelegram = $update_from["username"] ?? "";
-    $aliasTxt = $usernameTelegram !== "" ? "@".$usernameTelegram : "Sin alias público";
-    $linkTelegram = $usernameTelegram !== "" ? "https://t.me/".$usernameTelegram : "No disponible";
 
-    return "💳 <b>NUEVO COMPROBANTE DE RENOVACIÓN</b>
+    return "💳 NUEVO COMPROBANTE DE RENOVACIÓN
 
 ━━━━━━━━━━━━━━━━━━
 
 👤 Usuario MDPRIME:
-".tgCode($usuario)."
+".$usuario."
 
 👤 Nombre Telegram:
-".tgCode($nombre)."
+".$nombre."
 
-📱 Alias Telegram:
-".tgCode($aliasTxt)."
-
-🔗 Abrir chat:
-".tgCode($linkTelegram)."
+📱 Usuario Telegram:
+".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
 
 🆔 Chat ID:
-".tgCode($chat_id)."
+".$chat_id."
 
 📦 Duración:
-".tgCode($meses." meses")."
+".$meses." meses
 
 💳 Tipo:
-".tgCode($tipo)."
+".$tipo."
 
 🏆 Nivel:
-".tgCode($nivel)."
+".$nivel."
 
 💶 Importe:
-".tgCode($precio."€")."
+".$precio."€
 
 📅 Caduca:
-".tgCode($caduca)."
+".$caduca."
+
+⏳ Tiempo restante:
+".$dias."
+
+🕒 Fecha:
+".date("d/m/Y H:i")."
 
 ━━━━━━━━━━━━━━━━━━
 
 📸 Comprobante recibido debajo.
 
-✅ Revisa el comprobante y aprueba o rechaza la renovación.";
+💬 Responder:
+
+/reply ".$chat_id." Hola ".$usuario.", pago recibido. Procedemos con tu renovación.";
+}
+
+
+function mensajeComoRenovar() {
+    return "💳 CÓMO RENOVAR POR EL BOT
+
+━━━━━━━━━━━━━━━━━━
+
+1️⃣ Pulsa el comando /renovar.
+
+2️⃣ Escribe tu usuario de MDPRIME.
+
+3️⃣ El bot detectará automáticamente si eres:
+👑 Referido VIP
+👤 Cliente normal
+
+4️⃣ Elige la duración de tu renovación:
+📦 3 meses
+📦 6 meses
+📦 12 meses
+
+5️⃣ Accederás al enlace de pago correspondiente.
+
+6️⃣ Una vez realizado el pago, envía el comprobante a través del bot.
+
+7️⃣ Cuando el pago sea revisado y aprobado, la renovación se aplicará automáticamente a tu cuenta y recibirás una confirmación.
+
+━━━━━━━━━━━━━━━━━━
+
+⚠️ IMPORTANTE
+
+• Es obligatorio enviar el comprobante de pago para poder validar la renovación.
+• Hasta que el pago no sea aprobado, la renovación no se aplicará.
+• Si tu usuario no aparece como referido, el bot te mostrará los precios normales.
+
+━━━━━━━━━━━━━━━━━━
+
+🛠 ¿Tienes alguna duda o has tenido algún problema durante el proceso?
+
+Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo antes posible.";
+}
+
+
+
+/* =========================
+   NUEVA CUENTA MDPRIME
+========================= */
+
+function nuevoDuracionKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "📦 3 meses · ".renovarPrecioNormal(3)."€", "callback_data" => "nuevo_dur_3"]
+            ],
+            [
+                ["text" => "📦 6 meses · ".renovarPrecioNormal(6)."€", "callback_data" => "nuevo_dur_6"]
+            ],
+            [
+                ["text" => "📦 12 meses · ".renovarPrecioNormal(12)."€", "callback_data" => "nuevo_dur_12"]
+            ],
+            [
+                ["text" => "❌ Cancelar", "callback_data" => "nuevo_cancelar"]
+            ]
+        ]
+    ];
+}
+
+function guardarNuevoEstado($file, &$states, $chat_id, $data, $mode = "nuevo_opciones") {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = $mode;
+    $states[$chat_id]["nuevo_data"] = $data;
+
+    saveStates($file, $states);
+}
+
+function nuevoEstado($states, $chat_id) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        return [];
+    }
+
+    return $states[$chat_id]["nuevo_data"] ?? [];
+}
+
+function limpiarNuevoEstado($file, &$states, $chat_id) {
+    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
+        unset($states[$chat_id]["mode"]);
+        unset($states[$chat_id]["pending_command"]);
+        unset($states[$chat_id]["nuevo_data"]);
+        unset($states[$chat_id]["comprobante_nuevo"]);
+
+        if (empty($states[$chat_id])) {
+            unset($states[$chat_id]);
+        }
+
+        saveStates($file, $states);
+    }
+}
+
+function guardarComprobanteNuevoEstado($file, &$states, $chat_id, $data) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = "esperando_comprobante_nuevo";
+    $states[$chat_id]["comprobante_nuevo"] = $data;
+
+    saveStates($file, $states);
+}
+
+function obtenerComprobanteNuevoEstado($states, $chat_id) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        return [];
+    }
+
+    return $states[$chat_id]["comprobante_nuevo"] ?? [];
+}
+
+function guardarNuevoPendienteAdmin($file, &$states, $nuevo_id, $data) {
+    if (!isset($states["_nuevas_cuentas_pendientes"]) || !is_array($states["_nuevas_cuentas_pendientes"])) {
+        $states["_nuevas_cuentas_pendientes"] = [];
+    }
+
+    $data["nuevo_id"] = $nuevo_id;
+    $data["creado_en"] = date("Y-m-d H:i:s");
+    $states["_nuevas_cuentas_pendientes"][$nuevo_id] = $data;
+
+    saveStates($file, $states);
+}
+
+function obtenerNuevoPendienteAdmin($states, $nuevo_id) {
+    return $states["_nuevas_cuentas_pendientes"][$nuevo_id] ?? null;
+}
+
+function borrarNuevoPendienteAdmin($file, &$states, $nuevo_id) {
+    if (isset($states["_nuevas_cuentas_pendientes"][$nuevo_id])) {
+        unset($states["_nuevas_cuentas_pendientes"][$nuevo_id]);
+    }
+
+    if (isset($states["_nuevas_cuentas_pendientes"]) && empty($states["_nuevas_cuentas_pendientes"])) {
+        unset($states["_nuevas_cuentas_pendientes"]);
+    }
+
+    saveStates($file, $states);
+}
+
+function tecladoAdminNuevo($nuevo_id) {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "✅ Aprobar alta", "callback_data" => "admin_new_ok_".$nuevo_id]
+            ],
+            [
+                ["text" => "💬 Abrir chat", "callback_data" => "admin_new_chat_".$nuevo_id]
+            ],
+            [
+                ["text" => "❌ Rechazar pago", "callback_data" => "admin_new_no_".$nuevo_id]
+            ]
+        ]
+    ];
+}
+
+function mensajePagoNuevo($data) {
+    global $payment_link;
+
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $precio = renovarPrecioNormal($meses);
+
+    return "🆕 ALTA DE CUENTA NUEVA MDPRIME
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario solicitado:
+".$usuario."
+
+🔐 Contraseña:
+La genera nuestro panel. No se puede elegir manualmente.
+
+📦 Duración:
+".$meses." meses
+
+💶 Importe:
+".$precio."€
+
+━━━━━━━━━━━━━━━━━━
+
+🔗 Enlace de pago:
+".$payment_link."
+
+━━━━━━━━━━━━━━━━━━
+
+📸 Cuando termines el pago, envía aquí la captura del comprobante.
+
+⚠️ Importante:
+Tu cuenta NO se crea en la base de datos hasta que el pago sea revisado y aprobado.";
 }
 
 function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
@@ -2438,36 +2597,31 @@ function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
     );
 
     $usernameTelegram = $update_from["username"] ?? "";
-    $aliasTxt = $usernameTelegram !== "" ? "@".$usernameTelegram : "Sin alias público";
-    $linkTelegram = $usernameTelegram !== "" ? "https://t.me/".$usernameTelegram : "No disponible";
 
-    return "🆕 <b>NUEVO COMPROBANTE PARA ALTA</b>
+    return "🆕 NUEVO COMPROBANTE PARA ALTA
 
 ━━━━━━━━━━━━━━━━━━
 
 👤 Usuario solicitado:
-".tgCode($usuario)."
+".$usuario."
 
 👤 Nombre Telegram:
-".tgCode($nombre)."
+".$nombre."
 
-📱 Alias Telegram:
-".tgCode($aliasTxt)."
-
-🔗 Abrir chat:
-".tgCode($linkTelegram)."
+📱 Usuario Telegram:
+".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
 
 🆔 Chat ID:
-".tgCode($chat_id)."
+".$chat_id."
 
 📦 Duración:
-".tgCode($meses." meses")."
+".$meses." meses
 
 💶 Importe:
-".tgCode($precio."€")."
+".$precio."€
 
 🕒 Fecha:
-".tgCode(date("d/m/Y H:i"))."
+".date("d/m/Y H:i")."
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2692,7 +2846,7 @@ Tu usuario ha quedado vinculado correctamente.");
 
         if ($abrir_chat) {
             answerCallbackQuery($callback_id, "Datos del cliente enviados.");
-            sendInlineHtmlMessage($chat_id, "💬 <b>DATOS PARA CONTACTAR</b>\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".tgCode($usuario)."\n\n👤 Nombre Telegram:\n".tgCode($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".tgCode($aliasTxt)."\n\n🔗 Abrir chat:\n".tgCode($linkTelegram)."\n\n🆔 Chat ID:\n".tgCode($cliente_chat_id)."\n\n📦 Meses:\n".tgCode($meses)."\n\n💶 Importe:\n".tgCode($precio."€")."\n\n━━━━━━━━━━━━━━━━━━\n\nPara responder desde el bot:\n".tgCode("/reply ".$cliente_chat_id." Hola ".$usuario.", "));
+            sendMessage($chat_id, "💬 DATOS PARA CONTACTAR\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Meses:\n".$meses."\n\n💶 Importe:\n".$precio."€\n\n━━━━━━━━━━━━━━━━━━\n\nPara responder desde el bot:\n/reply ".$cliente_chat_id." Hola ".$usuario.", ");
             http_response_code(200);
             exit;
         }
@@ -2704,7 +2858,7 @@ Tu usuario ha quedado vinculado correctamente.");
                 borrarNuevoPendienteAdmin($state_file, $states, $nuevo_id);
                 $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
 
-                editMessageTextHtml($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ <b>ALTA APROBADA</b>\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n".tgCode($usuario)."\n\n👤 Nombre Telegram:\n".tgCode($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".tgCode($aliasTxt)."\n\n🔗 Abrir chat:\n".tgCode($linkTelegram)."\n\n🆔 Chat ID:\n".tgCode($cliente_chat_id)."\n\n📦 Plan contratado:\n".tgCode($meses." meses")."\n\n💶 Importe pagado:\n".tgCode($precio."€")."\n\n📅 Caducidad:\n".tgCode($nueva)."\n\n✅ Cuenta creada en clientes_normales como Activo.\n━━━━━━━━━━━━━━━━━━");
+                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".$nueva."\n\n✅ Cuenta creada en clientes_normales como Activo.\n━━━━━━━━━━━━━━━━━━");
 
                 if ($cliente_chat_id !== "") {
                     sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\nTu cuenta nueva ya ha sido creada y activada.\n\n👤 Usuario: ".$usuario."\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME.");
@@ -2770,43 +2924,9 @@ Tu usuario ha quedado vinculado correctamente.");
 
             answerCallbackQuery($callback_id, "Datos del cliente enviados.");
 
-            sendInlineHtmlMessage(
+            sendMessage(
                 $chat_id,
-                "💬 <b>DATOS PARA CONTACTAR</b>
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario MDPRIME:
-".tgCode($usuario)."
-
-👤 Nombre Telegram:
-".tgCode($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."
-
-📲 Alias Telegram:
-".tgCode($aliasTxt)."
-
-🔗 Abrir chat:
-".tgCode($linkTelegram)."
-
-🆔 Chat ID:
-".tgCode($cliente_chat_id)."
-
-📦 Plan:
-".tgCode($tipoInfo)."
-
-🏆 Paquete / nivel:
-".tgCode($nivelInfo)."
-
-⏳ Meses:
-".tgCode($mesesInfo)."
-
-💶 Importe:
-".tgCode($precioInfo."€")."
-
-━━━━━━━━━━━━━━━━━━
-
-Para responder desde el bot:
-".tgCode("/reply ".$cliente_chat_id." Hola ".$usuario.", ")
+                "💬 DATOS PARA CONTACTAR\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan:\n".$tipoInfo."\n\n🏆 Paquete / nivel:\n".$nivelInfo."\n\n⏳ Meses:\n".$mesesInfo."\n\n💶 Importe:\n".$precioInfo."€\n\n━━━━━━━━━━━━━━━━━━\n\nPara responder desde el bot:\n/reply ".$cliente_chat_id." Hola ".$usuario.", "
             );
 
             http_response_code(200);
@@ -2838,45 +2958,10 @@ Para responder desde el bot:
                 $aliasTxt = $aliasTelegram !== "" ? "@".$aliasTelegram : "Sin alias público";
                 $linkTelegram = $aliasTelegram !== "" ? "https://t.me/".$aliasTelegram : "No disponible";
 
-                editMessageTextHtml(
+                editMessageText(
                     $chat_id,
                     $message_id,
-                    "━━━━━━━━━━━━━━━━━━
-✅ <b>RENOVACIÓN APROBADA</b>
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario MDPRIME:
-".tgCode($usuario)."
-
-👤 Nombre Telegram:
-".tgCode($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."
-
-📲 Alias Telegram:
-".tgCode($aliasTxt)."
-
-🔗 Abrir chat:
-".tgCode($linkTelegram)."
-
-🆔 Chat ID:
-".tgCode($cliente_chat_id)."
-
-📦 Plan contratado:
-".tgCode($tipo)."
-
-🏆 Paquete / nivel:
-".tgCode($nivelTxt)."
-
-⏳ Meses añadidos:
-".tgCode($meses)."
-
-💶 Importe pagado:
-".tgCode($precio."€")."
-
-📅 Nueva caducidad:
-".tgCode($nueva)."
-
-✅ Panel y bot actualizados.
-━━━━━━━━━━━━━━━━━━"
+                    "━━━━━━━━━━━━━━━━━━\n✅ RENOVACIÓN APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$tipo."\n\n🏆 Paquete / nivel:\n".$nivelTxt."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados.\n━━━━━━━━━━━━━━━━━━"
                 );
 
                 if ($cliente_chat_id !== "") {
@@ -3069,9 +3154,9 @@ if ($user_state === "esperando_comprobante_nuevo") {
 
         guardarNuevoPendienteAdmin($state_file, $states, $nuevo_id, $comp_data);
 
-        sendInlineHtmlMessage(
+        sendInlineMessage(
             $admin_id,
-            mensajeAdminComprobanteNuevo($chat_id, $from_user, $comp_data),
+            mensajeAdminComprobanteNuevo($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza el alta.",
             tecladoAdminNuevo($nuevo_id)
         );
 
@@ -3113,9 +3198,9 @@ if ($user_state === "esperando_comprobante_renovacion") {
 
         guardarRenovacionPendienteAdmin($state_file, $states, $ren_id, $comp_data);
 
-        sendInlineHtmlMessage(
+        sendInlineMessage(
             $admin_id,
-            mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data),
+            mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza la renovación.",
             tecladoAdminRenovacion($ren_id)
         );
 
