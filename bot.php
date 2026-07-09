@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V46-CONFIRMACION-BOTONES-BUSQUEDA-FLEX-20260709";
+$bot_version = "MDPRIME-BOT-V48-ADMIN-AVISOS-PRO-20260709";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -153,7 +153,8 @@ function sendMessage($chat_id, $text, $keyboard = true) {
                     ["text" => "/soporte"]
                 ],
                 [
-                    ["text" => "/cambiarusuario"]
+                    ["text" => "/cambiarusuario"],
+                    ["text" => "/admin"]
                 ]
             ],
             "resize_keyboard" => true,
@@ -162,6 +163,78 @@ function sendMessage($chat_id, $text, $keyboard = true) {
     }
 
     return telegramRequest("sendMessage", $data);
+}
+
+
+
+function tecladoAdminMdprime() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "🔔 Enviar avisos de caducidad", "callback_data" => "admin_avisos_caducidad"]
+            ],
+            [
+                ["text" => "❌ Cerrar", "callback_data" => "admin_cerrar"]
+            ]
+        ]
+    ];
+}
+
+function resumenAvisosCaducidadAdmin($res) {
+    $detalle = $res["detalle"] ?? [];
+    $vip = 0;
+    $normal = 0;
+
+    foreach ($detalle as $linea) {
+        if (stripos($linea, "Referido VIP") !== false) {
+            $vip++;
+        }
+        if (stripos($linea, "Cliente normal") !== false || stripos($linea, "no referido") !== false) {
+            $normal++;
+        }
+    }
+
+    $msg = "🔔 AVISOS DE CADUCIDAD
+
+━━━━━━━━━━━━━━━━━━
+
+✅ Avisos enviados:
+".($res["enviados"] ?? 0)."
+
+👥 Referidos VIP:
+".$vip."
+
+👤 Clientes normales:
+".$normal."
+
+⚠️ Errores:
+".($res["errores"] ?? 0)."
+
+━━━━━━━━━━━━━━━━━━";
+
+    if (!empty($detalle)) {
+        $msg .= "
+
+📋 Detalle:
+
+";
+        foreach (array_slice($detalle, 0, 30) as $d) {
+            $msg .= "• ".$d."
+";
+        }
+    } else {
+        $msg .= "
+
+No había avisos pendientes para enviar ahora mismo.";
+    }
+
+    $msg .= "
+
+━━━━━━━━━━━━━━━━━━
+
+✔️ Proceso finalizado.";
+
+    return $msg;
 }
 
 
@@ -366,12 +439,17 @@ function enviarAvisosCaducidadMdprime() {
             $tipo = $info["tipo"];
 
             try {
+                // V47: limpiar fechas inválidas antes de calcular avisos.
+                try {
+                    $pdo->exec("UPDATE ".$tabla." SET fecha_caducidad = NULL WHERE CAST(fecha_caducidad AS CHAR) = '0000-00-00'");
+                } catch (Throwable $e) {}
+
                 $rows = $pdo->query("
                     SELECT id, nombre, fecha_caducidad, estado
                     FROM ".$tabla."
                     WHERE fecha_caducidad IS NOT NULL
-                      AND fecha_caducidad <> '0000-00-00'
-                      AND DATEDIFF(fecha_caducidad, CURDATE()) IN (0,1,3,7)
+                      AND CAST(fecha_caducidad AS CHAR) <> '0000-00-00'
+                      AND DATEDIFF(CAST(fecha_caducidad AS DATE), CURDATE()) IN (0,1,3,7)
                 ")->fetchAll();
             } catch (Throwable $e) {
                 $resumen["errores"]++;
@@ -383,11 +461,16 @@ function enviarAvisosCaducidadMdprime() {
                 $usuario = trim($row["nombre"] ?? "");
                 $cad = $row["fecha_caducidad"] ?? "";
 
-                if ($usuario === "" || $cad === "") {
+                if ($usuario === "" || $cad === "" || $cad === "0000-00-00") {
                     continue;
                 }
 
-                $dias = (int)floor((strtotime($cad) - strtotime(date("Y-m-d"))) / 86400);
+                $tsCad = strtotime($cad);
+                if (!$tsCad) {
+                    continue;
+                }
+
+                $dias = (int)floor(($tsCad - strtotime(date("Y-m-d"))) / 86400);
 
                 if (!in_array($dias, [0, 1, 3, 7], true)) {
                     continue;
@@ -3018,6 +3101,40 @@ Chat ID: ".$chat_id;
 
 switch ($command) {
 
+    case "/admin":
+
+        if ((string)$chat_id !== (string)$admin_id) {
+            sendMessage($chat_id, "❌ Esta función está reservada para la administración.");
+            break;
+        }
+
+        sendInlineMessage(
+            $chat_id,
+            "👑 ADMINISTRACIÓN MDPRIME
+
+━━━━━━━━━━━━━━━━━━
+
+🔔 Desde aquí puedes lanzar manualmente los avisos de caducidad.
+
+El sistema revisará:
+
+👥 Referidos VIP
+👤 Clientes normales / no referidos
+
+Y enviará aviso a quienes caduquen en:
+
+⏳ 7 días
+⚠️ 3 días
+🚨 1 día
+❌ Hoy
+
+━━━━━━━━━━━━━━━━━━
+
+Pulsa el botón para ejecutar:",
+            tecladoAdminMdprime()
+        );
+        break;
+
     case "/avisoscaducidad":
 
         if ((string)$chat_id !== (string)$admin_id) {
@@ -3027,26 +3144,7 @@ switch ($command) {
 
         $res = enviarAvisosCaducidadMdprime();
 
-        $msg = "🔔 AVISOS DE CADUCIDAD
-
-Versión:
-".$bot_version."
-
-Enviados:
-".($res["enviados"] ?? 0)."
-
-Errores:
-".($res["errores"] ?? 0);
-
-        if (!empty($res["detalle"])) {
-            $msg .= "
-
-Detalle:
-".implode("
-", array_slice($res["detalle"], 0, 20));
-        }
-
-        sendLongMessage($chat_id, $msg);
+        sendLongMessage($chat_id, resumenAvisosCaducidadAdmin($res));
         break;
 
     case "/start":
