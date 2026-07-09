@@ -118,6 +118,33 @@ function telegramRequest($method, $data = []) {
     return $response ? json_decode($response, true) : null;
 }
 
+function htmlSafe($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
+}
+
+function copyCode($value) {
+    $value = trim((string)$value);
+    if ($value === "") {
+        $value = "No disponible";
+    }
+    return "<code>".htmlSafe($value)."</code>";
+}
+
+function sendHtmlMessage($chat_id, $text, $keyboard = false) {
+    $data = [
+        "chat_id" => $chat_id,
+        "text" => $text,
+        "parse_mode" => "HTML",
+        "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
+    ];
+
+    if ($keyboard) {
+        $data["reply_markup"] = json_encode($keyboard);
+    }
+
+    return telegramRequest("sendMessage", $data);
+}
+
 function sendMessage($chat_id, $text, $keyboard = true) {
     $data = [
         "chat_id" => $chat_id,
@@ -435,12 +462,16 @@ function enviarAvisosCaducidadMdprime() {
 }
 
 
-function sendInlineMessage($chat_id, $text, $reply_markup = null) {
+function sendInlineMessage($chat_id, $text, $reply_markup = null, $parse_mode = null) {
     $data = [
         "chat_id" => $chat_id,
         "text" => $text,
         "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
     ];
+
+    if ($parse_mode) {
+        $data["parse_mode"] = $parse_mode;
+    }
 
     if ($reply_markup) {
         $data["reply_markup"] = json_encode($reply_markup);
@@ -1993,6 +2024,7 @@ function enviarRenovacionAdmin($admin_id, $chat_id, $update_from, $data) {
     );
 
     $usernameTelegram = $update_from["username"] ?? "";
+    $aliasTelegram = ($usernameTelegram != "") ? "@".$usernameTelegram : "No disponible";
 
     if ($esVip) {
         $precio = renovarPrecioReferidos($nivel, $meses);
@@ -2009,50 +2041,49 @@ function enviarRenovacionAdmin($admin_id, $chat_id, $update_from, $data) {
 ━━━━━━━━━━━━━━━━━━
 
 👤 Usuario MDPRIME:
-".$usuario."
+".copyCode($usuario)."
 
 👥 Referente:
-".(($data["referente_nombre"] ?? "") !== "" ? $data["referente_nombre"] : "No disponible")."
+".htmlSafe(($data["referente_nombre"] ?? "") !== "" ? $data["referente_nombre"] : "No disponible")."
 
 👤 Nombre Telegram:
-".$nombre."
+".copyCode($nombre)."
 
 📱 Usuario Telegram:
-".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+".copyCode($aliasTelegram)."
 
 🆔 Chat ID:
-".$chat_id."
+".copyCode($chat_id)."
 
 📦 Duración:
-".$meses." meses
+".copyCode($meses." meses")."
 
 💳 Tipo:
-".$tipo."
+".htmlSafe($tipo)."
 
 🏆 Nivel:
-".$nivelTxt."
+".htmlSafe($nivelTxt)."
 
 💶 Precio:
-".$precio."€
+".copyCode($precio."€")."
 
 📅 Caduca:
-".$caduca."
+".htmlSafe($caduca)."
 
 ⏳ Tiempo restante:
-".$dias."
+".htmlSafe($dias)."
 
 🕒 Fecha:
-".date("d/m/Y H:i")."
+".htmlSafe(date("d/m/Y H:i"))."
 
 ━━━━━━━━━━━━━━━━━━
 
 💬 Responder:
 
-/reply ".$chat_id." Hola ".$usuario.", hemos recibido tu solicitud de renovación.";
+".copyCode("/reply ".$chat_id." Hola ".$usuario.", hemos recibido tu solicitud de renovación.");
 
-    sendMessage($admin_id, $admin_msg, false);
+    sendHtmlMessage($admin_id, $admin_msg, false);
 }
-
 
 function guardarComprobanteRenovacionEstado($file, &$states, $chat_id, $data) {
     if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
@@ -2341,43 +2372,44 @@ function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
     );
 
     $usernameTelegram = $update_from["username"] ?? "";
+    $aliasTelegram = ($usernameTelegram != "") ? "@".$usernameTelegram : "No disponible";
 
     return "💳 NUEVO COMPROBANTE DE RENOVACIÓN
 
 ━━━━━━━━━━━━━━━━━━
 
 👤 Usuario MDPRIME:
-".$usuario."
+".copyCode($usuario)."
 
 👤 Nombre Telegram:
-".$nombre."
+".copyCode($nombre)."
 
 📱 Usuario Telegram:
-".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+".copyCode($aliasTelegram)."
 
 🆔 Chat ID:
-".$chat_id."
+".copyCode($chat_id)."
 
 📦 Duración:
-".$meses." meses
+".copyCode($meses." meses")."
 
 💳 Tipo:
-".$tipo."
+".htmlSafe($tipo)."
 
 🏆 Nivel:
-".$nivel."
+".htmlSafe($nivel)."
 
 💶 Importe:
-".$precio."€
+".copyCode($precio."€")."
 
 📅 Caduca:
-".$caduca."
+".htmlSafe($caduca)."
 
 ⏳ Tiempo restante:
-".$dias."
+".htmlSafe($dias)."
 
 🕒 Fecha:
-".date("d/m/Y H:i")."
+".htmlSafe(date("d/m/Y H:i"))."
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2385,9 +2417,8 @@ function mensajeAdminComprobanteRenovacion($chat_id, $update_from, $data) {
 
 💬 Responder:
 
-/reply ".$chat_id." Hola ".$usuario.", pago recibido. Procedemos con tu renovación.";
+".copyCode("/reply ".$chat_id." Hola ".$usuario.", pago recibido. Procedemos con tu renovación.");
 }
-
 
 function mensajeComoRenovar() {
     return "💳 CÓMO RENOVAR POR EL BOT
@@ -2445,22 +2476,6 @@ function nuevoDuracionKeyboard() {
             ],
             [
                 ["text" => "📦 12 meses · ".renovarPrecioNormal(12)."€", "callback_data" => "nuevo_dur_12"]
-            ],
-            [
-                ["text" => "❌ Cancelar", "callback_data" => "nuevo_cancelar"]
-            ]
-        ]
-    ];
-}
-
-function nuevoConfirmarUsuarioKeyboard() {
-    return [
-        "inline_keyboard" => [
-            [
-                ["text" => "✅ Sí, usar este usuario", "callback_data" => "nuevo_confirm_si"]
-            ],
-            [
-                ["text" => "✏️ No, escribir otro", "callback_data" => "nuevo_confirm_no"]
             ],
             [
                 ["text" => "❌ Cancelar", "callback_data" => "nuevo_cancelar"]
@@ -2613,31 +2628,32 @@ function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
     );
 
     $usernameTelegram = $update_from["username"] ?? "";
+    $aliasTelegram = ($usernameTelegram != "") ? "@".$usernameTelegram : "No disponible";
 
     return "🆕 NUEVO COMPROBANTE PARA ALTA
 
 ━━━━━━━━━━━━━━━━━━
 
 👤 Usuario solicitado:
-".$usuario."
+".copyCode($usuario)."
 
 👤 Nombre Telegram:
-".$nombre."
+".copyCode($nombre)."
 
 📱 Usuario Telegram:
-".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+".copyCode($aliasTelegram)."
 
 🆔 Chat ID:
-".$chat_id."
+".copyCode($chat_id)."
 
 📦 Duración:
-".$meses." meses
+".copyCode($meses." meses")."
 
 💶 Importe:
-".$precio."€
+".copyCode($precio."€")."
 
 🕒 Fecha:
-".date("d/m/Y H:i")."
+".htmlSafe(date("d/m/Y H:i"))."
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -3026,45 +3042,6 @@ Tu usuario ha quedado vinculado correctamente.");
             exit;
         }
 
-        if ($callback_data === "nuevo_confirm_no") {
-            guardarNuevoEstado($state_file, $states, $chat_id, [], "nuevo_usuario");
-            editMessageText($chat_id, $message_id, "✏️ Perfecto.
-
-Escribe nuevamente el nombre de usuario que quieres crear.
-
-Ejemplo:
-MiguelTV");
-            http_response_code(200);
-            exit;
-        }
-
-        if ($callback_data === "nuevo_confirm_si") {
-            guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data, "nuevo_opciones");
-            editMessageText(
-                $chat_id,
-                $message_id,
-                "🆕 CUENTA NUEVA MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario confirmado:
-".($nuevo_data["usuario"] ?? "Sin usuario")."
-
-🔐 Contraseña:
-La genera nuestro panel. No se puede elegir manualmente.
-
-⚠️ Tu cuenta NO se creará todavía.
-Primero debes elegir plan, pagar y enviar el comprobante.
-
-━━━━━━━━━━━━━━━━━━
-
-Selecciona la duración:",
-                nuevoDuracionKeyboard()
-            );
-            http_response_code(200);
-            exit;
-        }
-
         if (strpos($callback_data, "nuevo_dur_") === 0) {
             $meses = (int)str_replace("nuevo_dur_", "", $callback_data);
             $nuevo_data["meses"] = $meses;
@@ -3212,7 +3189,8 @@ if ($user_state === "esperando_comprobante_nuevo") {
         sendInlineMessage(
             $admin_id,
             mensajeAdminComprobanteNuevo($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza el alta.",
-            tecladoAdminNuevo($nuevo_id)
+            tecladoAdminNuevo($nuevo_id),
+            "HTML"
         );
 
         forwardMessage($admin_id, $chat_id, $message_id);
@@ -3256,7 +3234,8 @@ if ($user_state === "esperando_comprobante_renovacion") {
         sendInlineMessage(
             $admin_id,
             mensajeAdminComprobanteRenovacion($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza la renovación.",
-            tecladoAdminRenovacion($ren_id)
+            tecladoAdminRenovacion($ren_id),
+            "HTML"
         );
 
         forwardMessage($admin_id, $chat_id, $message_id);
@@ -3474,16 +3453,11 @@ if ($user_state === "confirmando_usuario_mdprime") {
 if ($user_state === "nuevo_usuario") {
 
     $usuario_nuevo = trim($text);
-    $usuario_nuevo = str_replace(["
-", "
-", "	"], " ", $usuario_nuevo);
+    $usuario_nuevo = str_replace(["\r", "\n", "\t"], " ", $usuario_nuevo);
     $usuario_nuevo = preg_replace('/\s+/', ' ', $usuario_nuevo);
 
     if ($usuario_nuevo === "" || substr($usuario_nuevo, 0, 1) === "/") {
-        sendMessage($chat_id, "👤 Escribe el nombre de usuario que quieres crear.
-
-Ejemplo:
-MiguelTV");
+        sendMessage($chat_id, "👤 Escribe el nombre de usuario que quieres crear.\n\nEjemplo:\nMiguelTV");
         http_response_code(200);
         exit;
     }
@@ -3491,11 +3465,7 @@ MiguelTV");
     $existe = consultarClienteApi($usuario_nuevo);
     if (!empty($existe["ok"])) {
         limpiarNuevoEstado($state_file, $states, $chat_id);
-        sendMessage($chat_id, "⚠️ Ese usuario ya aparece en la base de datos.
-
-Para esa cuenta debes usar /renovar.
-
-Si quieres crear una cuenta nueva, escribe /nuevo y pon otro usuario.");
+        sendMessage($chat_id, "⚠️ Ese usuario ya aparece en la base de datos.\n\nPara esa cuenta debes usar /renovar.\n\nSi quieres crear una cuenta nueva, escribe /nuevo y pon otro usuario.");
         http_response_code(200);
         exit;
     }
@@ -3504,23 +3474,12 @@ Si quieres crear una cuenta nueva, escribe /nuevo y pon otro usuario.");
         "usuario" => $usuario_nuevo
     ];
 
-    guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data, "nuevo_confirmar_usuario");
+    guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
 
     sendInlineMessage(
         $chat_id,
-        "🔍 CONFIRMA TU NUEVO USUARIO
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario elegido:
-".$usuario_nuevo."
-
-⚠️ Comprueba que está correctamente escrito.
-
-Este será el nombre que se usará para crear la cuenta cuando el pago sea aprobado.
-
-¿Deseas usar este usuario?",
-        nuevoConfirmarUsuarioKeyboard()
+        "🆕 CUENTA NUEVA MDPRIME\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".$usuario_nuevo."\n\n🔐 Contraseña:\nLa genera nuestro panel. No se puede elegir manualmente.\n\n⚠️ Tu cuenta NO se creará todavía.\nPrimero debes elegir plan, pagar y enviar el comprobante.\n\n━━━━━━━━━━━━━━━━━━\n\nSelecciona la duración:",
+        nuevoDuracionKeyboard()
     );
 
     http_response_code(200);
