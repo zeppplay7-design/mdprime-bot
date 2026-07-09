@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V46-CONFIRMACION-BOTONES-BUSQUEDA-FLEX-20260709";
+$bot_version = "MDPRIME-BOT-V47-NUEVO-ALTA-COMPROBANTE-APROBACION-20260709";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -149,7 +149,7 @@ function sendMessage($chat_id, $text, $keyboard = true) {
                     ["text" => "/agenda"]
                 ],
                 [
-                    ["text" => "/pagar"],
+                    ["text" => "/nuevo"],
                     ["text" => "/soporte"]
                 ],
                 [
@@ -578,6 +578,8 @@ function clearUserMode($file, &$states, $chat_id) {
         unset($states[$chat_id]["mode"]);
         unset($states[$chat_id]["pending_command"]);
         unset($states[$chat_id]["renovar_data"]);
+        unset($states[$chat_id]["nuevo_data"]);
+        unset($states[$chat_id]["comprobante_nuevo"]);
 
         if (empty($states[$chat_id])) {
             unset($states[$chat_id]);
@@ -2426,6 +2428,298 @@ function mensajeComoRenovar() {
 Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo antes posible.";
 }
 
+
+
+/* =========================
+   NUEVA CUENTA MDPRIME
+========================= */
+
+function nuevoDuracionKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "📦 3 meses · ".renovarPrecioNormal(3)."€", "callback_data" => "nuevo_dur_3"]
+            ],
+            [
+                ["text" => "📦 6 meses · ".renovarPrecioNormal(6)."€", "callback_data" => "nuevo_dur_6"]
+            ],
+            [
+                ["text" => "📦 12 meses · ".renovarPrecioNormal(12)."€", "callback_data" => "nuevo_dur_12"]
+            ],
+            [
+                ["text" => "❌ Cancelar", "callback_data" => "nuevo_cancelar"]
+            ]
+        ]
+    ];
+}
+
+function guardarNuevoEstado($file, &$states, $chat_id, $data, $mode = "nuevo_opciones") {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = $mode;
+    $states[$chat_id]["nuevo_data"] = $data;
+
+    saveStates($file, $states);
+}
+
+function nuevoEstado($states, $chat_id) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        return [];
+    }
+
+    return $states[$chat_id]["nuevo_data"] ?? [];
+}
+
+function limpiarNuevoEstado($file, &$states, $chat_id) {
+    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
+        unset($states[$chat_id]["mode"]);
+        unset($states[$chat_id]["pending_command"]);
+        unset($states[$chat_id]["nuevo_data"]);
+        unset($states[$chat_id]["comprobante_nuevo"]);
+
+        if (empty($states[$chat_id])) {
+            unset($states[$chat_id]);
+        }
+
+        saveStates($file, $states);
+    }
+}
+
+function guardarComprobanteNuevoEstado($file, &$states, $chat_id, $data) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = "esperando_comprobante_nuevo";
+    $states[$chat_id]["comprobante_nuevo"] = $data;
+
+    saveStates($file, $states);
+}
+
+function obtenerComprobanteNuevoEstado($states, $chat_id) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        return [];
+    }
+
+    return $states[$chat_id]["comprobante_nuevo"] ?? [];
+}
+
+function guardarNuevoPendienteAdmin($file, &$states, $nuevo_id, $data) {
+    if (!isset($states["_nuevas_cuentas_pendientes"]) || !is_array($states["_nuevas_cuentas_pendientes"])) {
+        $states["_nuevas_cuentas_pendientes"] = [];
+    }
+
+    $data["nuevo_id"] = $nuevo_id;
+    $data["creado_en"] = date("Y-m-d H:i:s");
+    $states["_nuevas_cuentas_pendientes"][$nuevo_id] = $data;
+
+    saveStates($file, $states);
+}
+
+function obtenerNuevoPendienteAdmin($states, $nuevo_id) {
+    return $states["_nuevas_cuentas_pendientes"][$nuevo_id] ?? null;
+}
+
+function borrarNuevoPendienteAdmin($file, &$states, $nuevo_id) {
+    if (isset($states["_nuevas_cuentas_pendientes"][$nuevo_id])) {
+        unset($states["_nuevas_cuentas_pendientes"][$nuevo_id]);
+    }
+
+    if (isset($states["_nuevas_cuentas_pendientes"]) && empty($states["_nuevas_cuentas_pendientes"])) {
+        unset($states["_nuevas_cuentas_pendientes"]);
+    }
+
+    saveStates($file, $states);
+}
+
+function tecladoAdminNuevo($nuevo_id) {
+    return [
+        "inline_keyboard" => [
+            [
+                ["text" => "✅ Aprobar alta", "callback_data" => "admin_new_ok_".$nuevo_id]
+            ],
+            [
+                ["text" => "💬 Abrir chat", "callback_data" => "admin_new_chat_".$nuevo_id]
+            ],
+            [
+                ["text" => "❌ Rechazar pago", "callback_data" => "admin_new_no_".$nuevo_id]
+            ]
+        ]
+    ];
+}
+
+function mensajePagoNuevo($data) {
+    global $payment_link;
+
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $precio = renovarPrecioNormal($meses);
+
+    return "🆕 ALTA DE CUENTA NUEVA MDPRIME
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario solicitado:
+".$usuario."
+
+🔐 Contraseña:
+La genera nuestro panel. No se puede elegir manualmente.
+
+📦 Duración:
+".$meses." meses
+
+💶 Importe:
+".$precio."€
+
+━━━━━━━━━━━━━━━━━━
+
+🔗 Enlace de pago:
+".$payment_link."
+
+━━━━━━━━━━━━━━━━━━
+
+📸 Cuando termines el pago, envía aquí la captura del comprobante.
+
+⚠️ Importante:
+Tu cuenta NO se crea en la base de datos hasta que el pago sea revisado y aprobado.";
+}
+
+function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
+    $usuario = $data["usuario"] ?? "Sin usuario";
+    $meses = (int)($data["meses"] ?? 0);
+    $precio = renovarPrecioNormal($meses);
+
+    $nombre = trim(
+        ($update_from["first_name"] ?? "") . " " .
+        ($update_from["last_name"] ?? "")
+    );
+
+    $usernameTelegram = $update_from["username"] ?? "";
+
+    return "🆕 NUEVO COMPROBANTE PARA ALTA
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario solicitado:
+".$usuario."
+
+👤 Nombre Telegram:
+".$nombre."
+
+📱 Usuario Telegram:
+".($usernameTelegram != "" ? "@".$usernameTelegram : "No disponible")."
+
+🆔 Chat ID:
+".$chat_id."
+
+📦 Duración:
+".$meses." meses
+
+💶 Importe:
+".$precio."€
+
+🕒 Fecha:
+".date("d/m/Y H:i")."
+
+━━━━━━━━━━━━━━━━━━
+
+📸 Comprobante recibido debajo.
+
+⚠️ Al aprobar, se creará la cuenta en clientes_normales como Activo.";
+}
+
+function aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente = [], $chat_id_cliente = "") {
+    $meses = (int)$meses;
+    $usuario = trim((string)$usuario);
+
+    if (!in_array($meses, [3, 6, 12], true)) {
+        return ["ok" => false, "error" => "Duración no válida."];
+    }
+
+    if ($usuario === "") {
+        return ["ok" => false, "error" => "Usuario vacío."];
+    }
+
+    try {
+        $pdo = getRailwayPdo();
+
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS clientes_normales(
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                nombre VARCHAR(150) NOT NULL,
+                contacto VARCHAR(150) DEFAULT '',
+                telefono VARCHAR(150) DEFAULT '',
+                telegram VARCHAR(100) DEFAULT '',
+                fecha_alta DATE NULL,
+                fecha_caducidad DATE NULL,
+                estado VARCHAR(20) DEFAULT 'Activo',
+                nota TEXT,
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } catch (Throwable $e) {}
+
+        $chk = $pdo->prepare("
+            SELECT 'clientes_normales' AS tabla, id, nombre
+            FROM clientes_normales
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            LIMIT 1
+        ");
+        $chk->execute([$usuario, $usuario]);
+        $existe = $chk->fetch();
+
+        if (!$existe) {
+            $chk = $pdo->prepare("
+                SELECT 'referidos' AS tabla, id, nombre
+                FROM referidos
+                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+                LIMIT 1
+            ");
+            $chk->execute([$usuario, $usuario]);
+            $existe = $chk->fetch();
+        }
+
+        if ($existe) {
+            return ["ok" => false, "error" => "Ese usuario ya existe en la base de datos. Debe usar /renovar."];
+        }
+
+        $telegram = $from_cliente["username"] ?? "";
+        $contacto = $telegram !== "" ? "@".$telegram : "Chat ID: ".$chat_id_cliente;
+        $nota = "Alta creada desde el bot al aprobar pago. Contraseña generada desde panel externo.";
+
+        $ins = $pdo->prepare("
+            INSERT INTO clientes_normales(nombre, contacto, telefono, telegram, fecha_alta, fecha_caducidad, estado, nota)
+            VALUES(?,?,?,?,CURDATE(),DATE_ADD(CURDATE(), INTERVAL ".$meses." MONTH),'Activo',?)
+        ");
+        $ins->execute([$usuario, $contacto, (string)$chat_id_cliente, $telegram, $nota]);
+
+        $nuevoId = (int)$pdo->lastInsertId();
+
+        $ver = $pdo->prepare("SELECT id, nombre, fecha_caducidad, estado FROM clientes_normales WHERE id=? LIMIT 1");
+        $ver->execute([$nuevoId]);
+        $row = $ver->fetch();
+
+        if (!$row) {
+            return ["ok" => false, "error" => "Se insertó la cuenta, pero no pude verificarla."];
+        }
+
+        return [
+            "ok" => true,
+            "id" => (int)$row["id"],
+            "usuario" => $row["nombre"],
+            "nueva_caducidad" => $row["fecha_caducidad"],
+            "estado" => $row["estado"],
+            "tipo_tabla" => "clientes_normales"
+        ];
+
+    } catch (Throwable $e) {
+        return ["ok" => false, "error" => $e->getMessage()];
+    }
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -2507,6 +2801,77 @@ Tu usuario ha quedado vinculado correctamente.");
                 sendLongMessage($chat_id, formatMisReferidos($data));
             } else {
                 sendLongMessage($chat_id, formatMiCuenta($data));
+            }
+        }
+
+        http_response_code(200);
+        exit;
+    }
+
+    if (strpos($callback_data, "admin_new_ok_") === 0 || strpos($callback_data, "admin_new_no_") === 0 || strpos($callback_data, "admin_new_chat_") === 0) {
+        if ((string)$chat_id !== (string)$admin_id) {
+            answerCallbackQuery($callback_id, "No autorizado.");
+            http_response_code(200);
+            exit;
+        }
+
+        $aprobar = strpos($callback_data, "admin_new_ok_") === 0;
+        $abrir_chat = strpos($callback_data, "admin_new_chat_") === 0;
+
+        if ($aprobar) {
+            $nuevo_id = substr($callback_data, strlen("admin_new_ok_"));
+        } elseif ($abrir_chat) {
+            $nuevo_id = substr($callback_data, strlen("admin_new_chat_"));
+        } else {
+            $nuevo_id = substr($callback_data, strlen("admin_new_no_"));
+        }
+
+        $pendiente = obtenerNuevoPendienteAdmin($states, $nuevo_id);
+
+        if (!$pendiente) {
+            editMessageText($chat_id, $message_id, "ℹ️ Esta alta ya fue gestionada o no existe.");
+            http_response_code(200);
+            exit;
+        }
+
+        $usuario = $pendiente["usuario"] ?? "Sin usuario";
+        $meses = (int)($pendiente["meses"] ?? 0);
+        $cliente_chat_id = $pendiente["chat_id_cliente"] ?? "";
+        $precio = renovarPrecioNormal($meses);
+        $from_cliente = $pendiente["telegram_from"] ?? [];
+        $nombreTelegram = trim(($from_cliente["first_name"] ?? "") . " " . ($from_cliente["last_name"] ?? ""));
+        $aliasTelegram = $from_cliente["username"] ?? "";
+        $aliasTxt = $aliasTelegram !== "" ? "@".$aliasTelegram : "Sin alias público";
+        $linkTelegram = $aliasTelegram !== "" ? "https://t.me/".$aliasTelegram : "No disponible";
+
+        if ($abrir_chat) {
+            answerCallbackQuery($callback_id, "Datos del cliente enviados.");
+            sendMessage($chat_id, "💬 DATOS PARA CONTACTAR\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Meses:\n".$meses."\n\n💶 Importe:\n".$precio."€\n\n━━━━━━━━━━━━━━━━━━\n\nPara responder desde el bot:\n/reply ".$cliente_chat_id." Hola ".$usuario.", ");
+            http_response_code(200);
+            exit;
+        }
+
+        if ($aprobar) {
+            $resultado = aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente, $cliente_chat_id);
+
+            if (!empty($resultado["ok"])) {
+                borrarNuevoPendienteAdmin($state_file, $states, $nuevo_id);
+                $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
+
+                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".$nueva."\n\n✅ Cuenta creada en clientes_normales como Activo.\n━━━━━━━━━━━━━━━━━━");
+
+                if ($cliente_chat_id !== "") {
+                    sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\nTu cuenta nueva ya ha sido creada y activada.\n\n👤 Usuario: ".$usuario."\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME.");
+                }
+            } else {
+                editMessageText($chat_id, $message_id, "❌ NO SE PUDO CREAR LA CUENTA\n\n👤 Usuario:\n".$usuario."\n\nError:\n".($resultado["error"] ?? "Error desconocido")."\n\nNo se ha borrado la solicitud pendiente.");
+            }
+        } else {
+            borrarNuevoPendienteAdmin($state_file, $states, $nuevo_id);
+            editMessageText($chat_id, $message_id, "❌ ALTA RECHAZADA\n\n👤 Usuario:\n".$usuario."\n\nNo se ha creado ninguna cuenta.");
+
+            if ($cliente_chat_id !== "") {
+                sendMessage($cliente_chat_id, "❌ No hemos podido validar tu pago.\n\nNo se ha creado ninguna cuenta.\n\nSi crees que es un error, contacta con soporte.");
             }
         }
 
@@ -2635,6 +3000,28 @@ Tu usuario ha quedado vinculado correctamente.");
         exit;
     }
 
+    $nuevo_data = nuevoEstado($states, $chat_id);
+
+    if (strpos($callback_data, "nuevo_") === 0 && !empty($nuevo_data)) {
+        if ($callback_data === "nuevo_cancelar") {
+            limpiarNuevoEstado($state_file, $states, $chat_id);
+            editMessageText($chat_id, $message_id, "❌ Alta de cuenta nueva cancelada.");
+            http_response_code(200);
+            exit;
+        }
+
+        if (strpos($callback_data, "nuevo_dur_") === 0) {
+            $meses = (int)str_replace("nuevo_dur_", "", $callback_data);
+            $nuevo_data["meses"] = $meses;
+            guardarComprobanteNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
+
+            editMessageText($chat_id, $message_id, mensajePagoNuevo($nuevo_data));
+
+            http_response_code(200);
+            exit;
+        }
+    }
+
     $ren_data = renovarEstado($states, $chat_id);
 
     if (strpos($callback_data, "ren_") !== 0 || empty($ren_data)) {
@@ -2753,6 +3140,50 @@ $message_id = $update["message"]["message_id"] ?? null;
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
 
+// Si estamos esperando el comprobante de alta nueva, aceptar captura/foto/documento.
+if ($user_state === "esperando_comprobante_nuevo") {
+    $tiene_comprobante = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
+
+    if ($tiene_comprobante && $message_id) {
+        $comp_data = obtenerComprobanteNuevoEstado($states, $chat_id);
+        $from_user = $update["message"]["from"] ?? [];
+
+        $nuevo_id = uniqid("n");
+        $comp_data["chat_id_cliente"] = $chat_id;
+        $comp_data["telegram_from"] = $from_user;
+
+        guardarNuevoPendienteAdmin($state_file, $states, $nuevo_id, $comp_data);
+
+        sendInlineMessage(
+            $admin_id,
+            mensajeAdminComprobanteNuevo($chat_id, $from_user, $comp_data)."\n\n━━━━━━━━━━━━━━━━━━\n\n✅ Revisa el comprobante y aprueba o rechaza el alta.",
+            tecladoAdminNuevo($nuevo_id)
+        );
+
+        forwardMessage($admin_id, $chat_id, $message_id);
+
+        limpiarNuevoEstado($state_file, $states, $chat_id);
+
+        sendMessage(
+            $chat_id,
+            "✅ Comprobante recibido correctamente.\n\nQueda pendiente de revisión. Tu cuenta NO se creará hasta que el pago sea aprobado."
+        );
+
+        http_response_code(200);
+        exit;
+    }
+
+    if ($text !== "" && substr($text, 0, 1) !== "/") {
+        sendMessage(
+            $chat_id,
+            "📸 Para finalizar el alta, envía una captura o imagen del comprobante de pago.\n\nSi quieres cancelar, escribe /start."
+        );
+
+        http_response_code(200);
+        exit;
+    }
+}
+
 // Si estamos esperando el comprobante de renovación, aceptar captura/foto/documento.
 if ($user_state === "esperando_comprobante_renovacion") {
     $tiene_comprobante = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
@@ -2821,7 +3252,7 @@ $message_id = $update["message"]["message_id"] ?? null;
 
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
-$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/soporte"];
+$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/nuevo", "/soporte"];
 
 if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
     if ($message_id) {
@@ -2985,6 +3416,42 @@ if ($user_state === "confirmando_usuario_mdprime") {
     exit;
 }
 
+if ($user_state === "nuevo_usuario") {
+
+    $usuario_nuevo = trim($text);
+    $usuario_nuevo = str_replace(["\r", "\n", "\t"], " ", $usuario_nuevo);
+    $usuario_nuevo = preg_replace('/\s+/', ' ', $usuario_nuevo);
+
+    if ($usuario_nuevo === "" || substr($usuario_nuevo, 0, 1) === "/") {
+        sendMessage($chat_id, "👤 Escribe el nombre de usuario que quieres crear.\n\nEjemplo:\nMiguelTV");
+        http_response_code(200);
+        exit;
+    }
+
+    $existe = consultarClienteApi($usuario_nuevo);
+    if (!empty($existe["ok"])) {
+        limpiarNuevoEstado($state_file, $states, $chat_id);
+        sendMessage($chat_id, "⚠️ Ese usuario ya aparece en la base de datos.\n\nPara esa cuenta debes usar /renovar.\n\nSi quieres crear una cuenta nueva, escribe /nuevo y pon otro usuario.");
+        http_response_code(200);
+        exit;
+    }
+
+    $nuevo_data = [
+        "usuario" => $usuario_nuevo
+    ];
+
+    guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
+
+    sendInlineMessage(
+        $chat_id,
+        "🆕 CUENTA NUEVA MDPRIME\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".$usuario_nuevo."\n\n🔐 Contraseña:\nLa genera nuestro panel. No se puede elegir manualmente.\n\n⚠️ Tu cuenta NO se creará todavía.\nPrimero debes elegir plan, pagar y enviar el comprobante.\n\n━━━━━━━━━━━━━━━━━━\n\nSelecciona la duración:",
+        nuevoDuracionKeyboard()
+    );
+
+    http_response_code(200);
+    exit;
+}
+
 if ($user_state === "renovar") {
 
     $usuario_mdprime = trim($text);
@@ -3089,8 +3556,8 @@ Descargar aplicaciones.
 🏅 /agenda
 Agenda deportiva actualizada.
 
-💳 /pagar
-Acceso directo al pago.
+🆕 /nuevo
+Crear una cuenta nueva.
 
 🆘 /soporte
 Contactar con soporte si tienes dudas o problemas.
@@ -3274,15 +3741,16 @@ case "/renovar":
 
     break;
    
+    case "/nuevo":
+
+        setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
+
+        sendMessage($chat_id, "🆕 CREAR CUENTA NUEVA MDPRIME\n\nEscribe cómo quieres que se llame tu usuario.\n\nEjemplo:\nMiguelTV\n\n⚠️ La contraseña será generada desde nuestro panel. No se puede elegir manualmente.\n\nLa cuenta NO se creará hasta que pagues, envíes el comprobante y el pago sea aprobado.");
+        break;
+
     case "/pagar":
 
-        $msg = "💳 PAGO SEGURO MDPRIME:
-
-https://buy.stripe.com/7sYbJ19GFca2dBt8Qg6g80N
-
-Después envía el comprobante.";
-
-        sendMessage($chat_id, $msg);
+        sendMessage($chat_id, "ℹ️ El comando /pagar ha sido sustituido por /nuevo.\n\nPara crear una cuenta nueva usa:\n/nuevo");
         break;
 
     case "/soporte":
@@ -3451,7 +3919,7 @@ Usa:
 /apps
 /agenda
 /renovar
-/pagar
+/nuevo
 /soporte";
 
         sendMessage($chat_id, $msg);
