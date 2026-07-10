@@ -165,6 +165,16 @@ function sendMessage($chat_id, $text, $keyboard = true) {
 }
 
 
+
+function tecladoConfirmarUsuarioNoEncontrado() {
+    return [
+        "inline_keyboard" => [
+            [["text" => "✅ Sí, continuar con precio normal", "callback_data" => "ren_no_encontrado_si"]],
+            [["text" => "✏️ No, escribir de nuevo", "callback_data" => "ren_no_encontrado_no"]]
+        ]
+    ];
+}
+
 function tecladoConfirmarNombreProceso($tipo) {
     if ($tipo === "nuevo") {
         return [
@@ -2044,10 +2054,37 @@ function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_m
         "es_normal" => (!empty($datos["ok"]) && !empty($datos["cliente_normal"])),
         "nivel_actual" => $nivel_actual,
         "caduca" => $caduca,
-        "dias" => $dias
+        "dias" => $dias,
+        "encontrado_en_bd" => $encontrado_en_bd
     ];
 
     guardarRenovarEstado($state_file, $states, $chat_id, $ren_data);
+
+    if (!$encontrado_en_bd) {
+        if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+            $states[$chat_id] = [];
+        }
+
+        $states[$chat_id]["mode"] = "confirmando_usuario_no_encontrado";
+        $states[$chat_id]["renovar_data"] = $ren_data;
+        saveStates($state_file, $states);
+
+        $msg = "⚠️ USUARIO NO ENCONTRADO
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario escrito:
+".$usuario_mdprime."
+
+No aparece en la base de datos como referido ni como cliente normal.
+
+Puede tratarse de un error al escribir el nombre.
+
+¿Estás seguro de que el usuario es correcto y deseas continuar con precio normal?";
+
+        sendInlineMessage($chat_id, $msg, tecladoConfirmarUsuarioNoEncontrado());
+        return;
+    }
 
     if ($es_vip) {
         $msg = "✅ Usuario encontrado
@@ -2948,6 +2985,57 @@ Continuando con la renovación...");
             iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario_pendiente);
         }
 
+        http_response_code(200);
+        exit;
+    }
+
+    if ($callback_data === "ren_no_encontrado_si" || $callback_data === "ren_no_encontrado_no") {
+        $ren_data = renovarEstado($states, $chat_id);
+
+        if ($callback_data === "ren_no_encontrado_no") {
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+                $states[$chat_id] = [];
+            }
+
+            $states[$chat_id]["mode"] = "renovar";
+            unset($states[$chat_id]["renovar_data"]);
+            saveStates($state_file, $states);
+
+            editMessageText($chat_id, $message_id, "✏️ Escribe de nuevo el usuario MDPRIME que quieres renovar.");
+            http_response_code(200);
+            exit;
+        }
+
+        if (empty($ren_data["usuario"])) {
+            editMessageText($chat_id, $message_id, "⚠️ No hay ningún usuario pendiente. Inicia de nuevo con /renovar.");
+            http_response_code(200);
+            exit;
+        }
+
+        $states[$chat_id]["mode"] = "renovar_opciones";
+        saveStates($state_file, $states);
+
+        $usuario = $ren_data["usuario"];
+        $msg = "ℹ️ CONTINUAR CON PRECIO NORMAL
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario confirmado:
+".$usuario."
+
+❌ No figura en la base de datos.
+✅ Continuarás con tarifa normal.
+
+💶 Precios normales:
+3 meses → ".renovarPrecioNormal(3)."€
+6 meses → ".renovarPrecioNormal(6)."€
+12 meses → ".renovarPrecioNormal(12)."€
+
+━━━━━━━━━━━━━━━━━━
+
+Selecciona la duración:";
+
+        editMessageText($chat_id, $message_id, $msg, renovarDuracionKeyboard($ren_data));
         http_response_code(200);
         exit;
     }
