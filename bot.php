@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V47-NUEVO-ALTA-COMPROBANTE-APROBACION-20260709";
+$bot_version = "MDPRIME-BOT-V48-CONFIRMACION-NOMBRE-RENOVAR-NUEVO-20260710";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -164,6 +164,64 @@ function sendMessage($chat_id, $text, $keyboard = true) {
     return telegramRequest("sendMessage", $data);
 }
 
+
+function tecladoConfirmarNombreProceso($tipo) {
+    if ($tipo === "nuevo") {
+        return [
+            "inline_keyboard" => [
+                [["text" => "✅ Sí, crear esta cuenta", "callback_data" => "confirmar_nuevo_si"]],
+                [["text" => "✏️ No, cambiar el nombre", "callback_data" => "confirmar_nuevo_no"]]
+            ]
+        ];
+    }
+
+    return [
+        "inline_keyboard" => [
+            [["text" => "✅ Sí, continuar", "callback_data" => "confirmar_renovar_si"]],
+            [["text" => "✏️ No, escribir de nuevo", "callback_data" => "confirmar_renovar_no"]]
+        ]
+    ];
+}
+
+function pedirConfirmacionNombreProceso($state_file, &$states, $chat_id, $usuario, $tipo) {
+    $usuario = trim((string)$usuario);
+
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = $tipo === "nuevo" ? "confirmando_nombre_nuevo" : "confirmando_nombre_renovar";
+    $states[$chat_id]["nombre_proceso_pendiente"] = $usuario;
+    saveStates($state_file, $states);
+
+    if ($tipo === "nuevo") {
+        $texto = "⚠️ CONFIRMA EL NOMBRE
+
+━━━━━━━━━━━━━━━━━━
+
+Vas a crear la cuenta:
+
+👤 ".$usuario."
+
+Comprueba que está escrito exactamente como deseas.
+
+¿Es correcto?";
+    } else {
+        $texto = "⚠️ CONFIRMA EL USUARIO
+
+━━━━━━━━━━━━━━━━━━
+
+Has escrito el usuario:
+
+👤 ".$usuario."
+
+Comprueba que está correctamente escrito antes de renovar.
+
+¿Es correcto?";
+    }
+
+    sendInlineMessage($chat_id, $texto, tecladoConfirmarNombreProceso($tipo));
+}
 
 function tecladoConfirmarUsuarioMdprime() {
     return [
@@ -2754,6 +2812,78 @@ if (isset($update["callback_query"])) {
 
     $states = loadStates($state_file);
 
+    if (in_array($callback_data, ["confirmar_renovar_si", "confirmar_renovar_no", "confirmar_nuevo_si", "confirmar_nuevo_no"], true)) {
+        $es_nuevo = strpos($callback_data, "confirmar_nuevo_") === 0;
+        $es_si = substr($callback_data, -3) === "_si";
+        $usuario_pendiente = trim($states[$chat_id]["nombre_proceso_pendiente"] ?? "");
+
+        if (!$es_si) {
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+                $states[$chat_id] = [];
+            }
+            $states[$chat_id]["mode"] = $es_nuevo ? "nuevo_usuario" : "renovar";
+            unset($states[$chat_id]["nombre_proceso_pendiente"]);
+            saveStates($state_file, $states);
+
+            editMessageText($chat_id, $message_id, $es_nuevo
+                ? "✏️ Escribe de nuevo el nombre de la cuenta que quieres crear."
+                : "✏️ Escribe de nuevo el usuario MDPRIME que quieres renovar.");
+            http_response_code(200);
+            exit;
+        }
+
+        if ($usuario_pendiente === "") {
+            editMessageText($chat_id, $message_id, "⚠️ No hay ningún nombre pendiente. Inicia el proceso de nuevo.");
+            http_response_code(200);
+            exit;
+        }
+
+        unset($states[$chat_id]["nombre_proceso_pendiente"]);
+        saveStates($state_file, $states);
+
+        if ($es_nuevo) {
+            $existe = consultarClienteApi($usuario_pendiente);
+            if (!empty($existe["ok"])) {
+                limpiarNuevoEstado($state_file, $states, $chat_id);
+                editMessageText($chat_id, $message_id, "⚠️ Ese usuario ya existe. Para esa cuenta debes usar /renovar.");
+                http_response_code(200);
+                exit;
+            }
+
+            $nuevo_data = ["usuario" => $usuario_pendiente];
+            guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
+            editMessageText($chat_id, $message_id,
+                "🆕 CUENTA NUEVA MDPRIME
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario solicitado:
+".$usuario_pendiente."
+
+🔐 Contraseña:
+La genera nuestro panel. No se puede elegir manualmente.
+
+⚠️ Tu cuenta NO se creará todavía.
+Primero debes elegir plan, pagar y enviar el comprobante.
+
+━━━━━━━━━━━━━━━━━━
+
+Selecciona la duración:",
+                nuevoDuracionKeyboard()
+            );
+        } else {
+            editMessageText($chat_id, $message_id, "✅ Usuario confirmado:
+
+".$usuario_pendiente."
+
+Continuando con la renovación...");
+            iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario_pendiente);
+        }
+
+        http_response_code(200);
+        exit;
+    }
+
     if ($callback_data === "confirm_usuario_si" || $callback_data === "confirm_usuario_no") {
         if ($callback_data === "confirm_usuario_no") {
             if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
@@ -3436,17 +3566,7 @@ if ($user_state === "nuevo_usuario") {
         exit;
     }
 
-    $nuevo_data = [
-        "usuario" => $usuario_nuevo
-    ];
-
-    guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
-
-    sendInlineMessage(
-        $chat_id,
-        "🆕 CUENTA NUEVA MDPRIME\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario solicitado:\n".$usuario_nuevo."\n\n🔐 Contraseña:\nLa genera nuestro panel. No se puede elegir manualmente.\n\n⚠️ Tu cuenta NO se creará todavía.\nPrimero debes elegir plan, pagar y enviar el comprobante.\n\n━━━━━━━━━━━━━━━━━━\n\nSelecciona la duración:",
-        nuevoDuracionKeyboard()
-    );
+    pedirConfirmacionNombreProceso($state_file, $states, $chat_id, $usuario_nuevo, "nuevo");
 
     http_response_code(200);
     exit;
@@ -3455,7 +3575,14 @@ if ($user_state === "nuevo_usuario") {
 if ($user_state === "renovar") {
 
     $usuario_mdprime = trim($text);
-    iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario_mdprime);
+
+    if ($usuario_mdprime === "" || substr($usuario_mdprime, 0, 1) === "/") {
+        sendMessage($chat_id, "👤 Escribe el usuario MDPRIME que quieres renovar.");
+        http_response_code(200);
+        exit;
+    }
+
+    pedirConfirmacionNombreProceso($state_file, $states, $chat_id, $usuario_mdprime, "renovar");
 
     http_response_code(200);
     exit;
@@ -3704,7 +3831,7 @@ case "/comorenovar":
 case "/renovar":
 
     if ($saved_usuario !== "") {
-        iniciarRenovacionConUsuario($state_file, $states, $chat_id, $saved_usuario);
+        pedirConfirmacionNombreProceso($state_file, $states, $chat_id, $saved_usuario, "renovar");
         break;
     }
 
