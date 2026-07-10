@@ -930,6 +930,46 @@ function consultarClienteApi($usuario) {
     try {
         $pdo = getRailwayPdo();
 
+        /* V49: buscar primero directamente en REFERIDOS, sin exigir que esté activo
+           ni depender del INNER JOIN. Así también reconoce usuarios caducados
+           mientras sigan existiendo en el panel. */
+        try {
+            $stmtRefPrimero = $pdo->prepare("
+                SELECT *
+                FROM referidos
+                WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+                   OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $stmtRefPrimero->execute([$usuario, $usuario]);
+            $referidoPrimero = $stmtRefPrimero->fetch();
+
+            if ($referidoPrimero) {
+                $referidoPrimero["referente_id"] = (int)($referidoPrimero["cliente_id"] ?? 0);
+                $referidoPrimero["referente_nombre"] = "No disponible";
+                $referidoPrimero["referente_telegram"] = "";
+                $referidoPrimero["referente_contacto"] = "";
+
+                if (!empty($referidoPrimero["cliente_id"])) {
+                    $stmtRefCliente = $pdo->prepare("SELECT id, nombre, telegram, contacto FROM clientes WHERE id = ? LIMIT 1");
+                    $stmtRefCliente->execute([(int)$referidoPrimero["cliente_id"]]);
+                    $referentePrimero = $stmtRefCliente->fetch();
+
+                    if ($referentePrimero) {
+                        $referidoPrimero["referente_id"] = (int)$referentePrimero["id"];
+                        $referidoPrimero["referente_nombre"] = $referentePrimero["nombre"] ?? "No disponible";
+                        $referidoPrimero["referente_telegram"] = $referentePrimero["telegram"] ?? "";
+                        $referidoPrimero["referente_contacto"] = $referentePrimero["contacto"] ?? "";
+                    }
+                }
+
+                return construirRespuestaReferido($referidoPrimero);
+            }
+        } catch (Throwable $e) {
+            // Continuar con las búsquedas anteriores si esta comprobación falla.
+        }
+
         // Primero búsqueda exacta rápida usando índices
         $stmt = $pdo->prepare("
             SELECT *
@@ -1939,6 +1979,7 @@ function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_m
     $nombre_encontrado = $usuario_mdprime;
     $nivel_actual = "";
     $referente_nombre = "";
+    $es_referido = false;
 
     if (!empty($datos["ok"]) && !empty($datos["cliente"])) {
         $nombre_encontrado = $datos["cliente"]["nombre"] ?? $usuario_mdprime;
@@ -1947,6 +1988,7 @@ function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_m
         $nivel_actual = renovarNivelKeyDesdeTexto($datos["nivel"]["actual"] ?? "");
         $referente_nombre = $nombre_encontrado;
     } elseif (!empty($datos["ok"]) && !empty($datos["referido"])) {
+        $es_referido = true;
         $nombre_encontrado = $datos["referido"]["nombre"] ?? $usuario_mdprime;
         $caduca = $datos["referido"]["caducidad"] ?? "Sin fecha";
         $dias = fmtDias($datos["referido"]["dias"] ?? null);
@@ -1958,6 +2000,12 @@ function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_m
             $info_nivel = obtenerNivelReferentePorId($referente_id);
             $nivel_actual = $info_nivel["nivel"] ?? "";
         }
+
+        // Todo usuario que siga en la tabla de referidos se reconoce como referido,
+        // aunque esté caducado. Si el referente no devuelve nivel, se usa Cobre.
+        if ($nivel_actual === "") {
+            $nivel_actual = "cobre";
+        }
     } elseif (!empty($datos["ok"]) && !empty($datos["cliente_normal"])) {
         $nombre_encontrado = $datos["cliente_normal"]["nombre"] ?? $usuario_mdprime;
         $caduca = $datos["cliente_normal"]["caducidad"] ?? "Sin fecha";
@@ -1966,7 +2014,7 @@ function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_m
         $nivel_actual = "";
     }
 
-    $es_vip = ($nivel_actual !== "");
+    $es_vip = ($es_referido || $nivel_actual !== "");
 
     $ren_data = [
         "usuario" => $usuario_mdprime,
