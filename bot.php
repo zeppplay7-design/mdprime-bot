@@ -1424,6 +1424,12 @@ function formatMiCuenta($data) {
 
 ━━━━━━━━━━━━━━━━━━
 
+🔄 ¿Deseas renovar tu cuenta?
+Pulsa el comando:
+/renovar
+
+━━━━━━━━━━━━━━━━━━
+
 ⭐ Gracias por confiar en MDPRIME.";
     }
 
@@ -1462,6 +1468,12 @@ Cliente normal
 3 meses → ".renovarPrecioNormal(3)."€
 6 meses → ".renovarPrecioNormal(6)."€
 12 meses → ".renovarPrecioNormal(12)."€
+
+━━━━━━━━━━━━━━━━━━
+
+🔄 ¿Deseas renovar tu cuenta?
+Pulsa el comando:
+/renovar
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -1528,6 +1540,14 @@ Te faltan:
 
 💎 Ya estás en el nivel máximo.";
     }
+
+    $msg .= "
+
+━━━━━━━━━━━━━━━━━━
+
+🔄 ¿Deseas renovar una cuenta?
+Pulsa el comando:
+/renovar";
 
     return $msg;
 }
