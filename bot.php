@@ -118,12 +118,20 @@ function telegramRequest($method, $data = []) {
     return $response ? json_decode($response, true) : null;
 }
 
-function sendMessage($chat_id, $text, $keyboard = true) {
+function telegramHtml($text) {
+    return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
+}
+
+function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     $data = [
         "chat_id" => $chat_id,
         "text" => $text,
         "disable_notification" => ((string)$chat_id !== (string)abs((int)$chat_id))
     ];
+
+    if ($parse_mode !== null && $parse_mode !== "") {
+        $data["parse_mode"] = $parse_mode;
+    }
 
     if ($keyboard) {
         $data["reply_markup"] = json_encode([
@@ -570,7 +578,7 @@ function answerCallbackQuery($callback_query_id, $text = "") {
     return telegramRequest("answerCallbackQuery", $data);
 }
 
-function editMessageText($chat_id, $message_id, $text, $reply_markup = null) {
+function editMessageText($chat_id, $message_id, $text, $reply_markup = null, $parse_mode = null) {
     $data = [
         "chat_id" => $chat_id,
         "message_id" => $message_id,
@@ -579,6 +587,10 @@ function editMessageText($chat_id, $message_id, $text, $reply_markup = null) {
 
     if ($reply_markup) {
         $data["reply_markup"] = json_encode($reply_markup);
+    }
+
+    if ($parse_mode !== null && $parse_mode !== "") {
+        $data["parse_mode"] = $parse_mode;
     }
 
     return telegramRequest("editMessageText", $data);
@@ -3144,10 +3156,10 @@ Tu usuario ha quedado vinculado correctamente.");
                 borrarNuevoPendienteAdmin($state_file, $states, $nuevo_id);
                 $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
 
-                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".$nueva."\n\n✅ Cuenta creada en clientes_normales como Activo.\n━━━━━━━━━━━━━━━━━━");
+                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n👤 Nombre Telegram:\n".telegramHtml($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".telegramHtml($aliasTxt)."\n\n🔗 Abrir chat:\n".telegramHtml($linkTelegram)."\n\n🆔 Chat ID:\n<code>".telegramHtml($cliente_chat_id)."</code>\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".telegramHtml($nueva)."\n\n✅ Cuenta creada en clientes_normales como Activo.\n━━━━━━━━━━━━━━━━━━", null, "HTML");
 
                 if ($cliente_chat_id !== "") {
-                    sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\nTu cuenta nueva ya ha sido creada y activada.\n\n👤 Usuario: ".$usuario."\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME.");
+                    sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\nTu cuenta nueva ya ha sido creada y activada.\n\n👤 Usuario MDPRIME:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".telegramHtml($nueva)."\n\n⭐ Gracias por confiar en MDPRIME.", true, "HTML");
                 }
             } else {
                 editMessageText($chat_id, $message_id, "❌ NO SE PUDO CREAR LA CUENTA\n\n👤 Usuario:\n".$usuario."\n\nError:\n".($resultado["error"] ?? "Error desconocido")."\n\nNo se ha borrado la solicitud pendiente.");
@@ -3247,13 +3259,17 @@ Tu usuario ha quedado vinculado correctamente.");
                 editMessageText(
                     $chat_id,
                     $message_id,
-                    "━━━━━━━━━━━━━━━━━━\n✅ RENOVACIÓN APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n".$usuario."\n\n👤 Nombre Telegram:\n".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".$aliasTxt."\n\n🔗 Abrir chat:\n".$linkTelegram."\n\n🆔 Chat ID:\n".$cliente_chat_id."\n\n📦 Plan contratado:\n".$tipo."\n\n🏆 Paquete / nivel:\n".$nivelTxt."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".$nueva."\n\n✅ Panel y bot actualizados.\n━━━━━━━━━━━━━━━━━━"
+                    "━━━━━━━━━━━━━━━━━━\n✅ RENOVACIÓN APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario MDPRIME:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n👤 Nombre Telegram:\n".telegramHtml($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".telegramHtml($aliasTxt)."\n\n🔗 Abrir chat:\n".telegramHtml($linkTelegram)."\n\n🆔 Chat ID:\n<code>".telegramHtml($cliente_chat_id)."</code>\n\n📦 Plan contratado:\n".telegramHtml($tipo)."\n\n🏆 Paquete / nivel:\n".telegramHtml($nivelTxt)."\n\n⏳ Meses añadidos:\n".$meses."\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Nueva caducidad:\n".telegramHtml($nueva)."\n\n✅ Panel y bot actualizados.\n━━━━━━━━━━━━━━━━━━",
+                    null,
+                    "HTML"
                 );
 
                 if ($cliente_chat_id !== "") {
                     sendMessage(
                         $cliente_chat_id,
-                        "✅ Pago aprobado.\n\nTu renovación se ha aplicado correctamente.\n\n📦 Plan contratado: ".$tipo."\n🏆 Paquete / nivel: ".$nivelTxt."\n⏳ Meses añadidos: ".$meses."\n💶 Importe pagado: ".$precio."€\n📅 Nueva caducidad: ".$nueva."\n\n⭐ Gracias por confiar en MDPRIME."
+                        "✅ Pago aprobado.\n\nTu renovación se ha aplicado correctamente.\n\n👤 Usuario MDPRIME:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n📦 Plan contratado: ".telegramHtml($tipo)."\n🏆 Paquete / nivel: ".telegramHtml($nivelTxt)."\n⏳ Meses añadidos: ".$meses."\n💶 Importe pagado: ".$precio."€\n📅 Nueva caducidad: ".telegramHtml($nueva)."\n\n⭐ Gracias por confiar en MDPRIME.",
+                        true,
+                        "HTML"
                     );
                 }
 
