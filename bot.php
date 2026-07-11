@@ -946,62 +946,91 @@ function buscarReferenteParaAlta($entrada) {
         $pdo = getRailwayPdo();
         $buscado = mdprimeNormalizarBusqueda($entrada);
 
-        // Se consulta directamente la tabla de referentes. No pasa por
-        // consultarClienteApi(), porque esa función puede identificar primero
-        // un referido con el mismo nombre y devolver un tipo incorrecto.
-        $rows = $pdo->query("SELECT id, nombre, telegram, contacto FROM clientes ORDER BY id ASC")->fetchAll();
+        $buscarEnFilas = function($rows) use ($buscado) {
+            $exactos = [];
+            $parciales = [];
 
-        $exactos = [];
-        $parciales = [];
+            foreach ($rows as $row) {
+                $campos = [
+                    mdprimeNormalizarBusqueda($row["nombre"] ?? ""),
+                    mdprimeNormalizarBusqueda($row["telegram"] ?? ""),
+                    mdprimeNormalizarBusqueda($row["contacto"] ?? ""),
+                    mdprimeNormalizarBusqueda($row["telefono"] ?? "")
+                ];
 
-        foreach ($rows as $row) {
-            $campos = [
-                mdprimeNormalizarBusqueda($row["nombre"] ?? ""),
-                mdprimeNormalizarBusqueda($row["telegram"] ?? ""),
-                mdprimeNormalizarBusqueda($row["contacto"] ?? "")
-            ];
+                foreach ($campos as $campo) {
+                    if ($campo === "") continue;
 
-            foreach ($campos as $campo) {
-                if ($campo === "") continue;
+                    if ($campo === $buscado) {
+                        $exactos[(int)$row["id"]] = $row;
+                        break;
+                    }
 
-                if ($campo === $buscado) {
-                    $exactos[(int)$row["id"]] = $row;
-                    break;
-                }
-
-                if (mb_strlen($buscado, "UTF-8") >= 3 && mb_strpos($campo, $buscado, 0, "UTF-8") !== false) {
-                    $parciales[(int)$row["id"]] = $row;
+                    if (mb_strlen($buscado, "UTF-8") >= 3 && mb_strpos($campo, $buscado, 0, "UTF-8") !== false) {
+                        $parciales[(int)$row["id"]] = $row;
+                    }
                 }
             }
+
+            if (count($exactos) === 1) return ["ok" => true, "row" => array_values($exactos)[0]];
+            if (count($exactos) > 1) return ["ok" => false, "error" => "Hay varios usuarios con ese dato. Escribe el nombre exacto completo."];
+            if (count($parciales) === 1) return ["ok" => true, "row" => array_values($parciales)[0]];
+            if (count($parciales) > 1) return ["ok" => false, "error" => "Hay varios usuarios parecidos. Escribe el nombre exacto completo."];
+            return ["ok" => false, "error" => "No encontrado"];
+        };
+
+        // 1) Buscar primero entre los referentes ya existentes.
+        $rows = $pdo->query("SELECT id, nombre, telegram, contacto, telefono FROM clientes ORDER BY id ASC")->fetchAll();
+        $enReferentes = $buscarEnFilas($rows);
+
+        if (!empty($enReferentes["ok"])) {
+            $ref = $enReferentes["row"];
+            $nivelInfo = obtenerNivelReferentePorId((int)$ref["id"]);
+            $nivel = $nivelInfo["nivel"] ?? "";
+            if ($nivel === "") $nivel = "cobre";
+
+            return [
+                "ok" => true,
+                "origen" => "clientes",
+                "referente" => [
+                    "id" => (int)$ref["id"],
+                    "nombre" => $ref["nombre"] ?? "Sin nombre",
+                    "telegram" => $ref["telegram"] ?? "",
+                    "contacto" => $ref["contacto"] ?? ""
+                ],
+                "nivel" => $nivel,
+                "activos" => (int)($nivelInfo["activos"] ?? 0)
+            ];
         }
 
-        if (count($exactos) === 1) {
-            $ref = array_values($exactos)[0];
-        } elseif (count($exactos) > 1) {
-            return ["ok" => false, "error" => "Hay varios referentes con ese dato. Escribe el nombre exacto completo."];
-        } elseif (count($parciales) === 1) {
-            $ref = array_values($parciales)[0];
-        } elseif (count($parciales) > 1) {
-            return ["ok" => false, "error" => "Hay varios referentes parecidos. Escribe el nombre exacto completo."];
-        } else {
-            return ["ok" => false, "error" => "Referente no encontrado"];
+        if (($enReferentes["error"] ?? "") !== "No encontrado") {
+            return $enReferentes;
         }
 
-        $nivelInfo = obtenerNivelReferentePorId((int)$ref["id"]);
-        $nivel = $nivelInfo["nivel"] ?? "";
-        if ($nivel === "") $nivel = "cobre";
+        // 2) Si todavía no es referente, buscarlo en clientes normales.
+        // No se mueve todavía: se convertirá únicamente cuando el administrador apruebe el pago.
+        $rowsNormales = $pdo->query("SELECT id, nombre, telegram, contacto, telefono, fecha_alta, fecha_caducidad, estado, nota FROM clientes_normales ORDER BY id ASC")->fetchAll();
+        $enNormales = $buscarEnFilas($rowsNormales);
 
-        return [
-            "ok" => true,
-            "referente" => [
-                "id" => (int)$ref["id"],
-                "nombre" => $ref["nombre"] ?? "Sin nombre",
-                "telegram" => $ref["telegram"] ?? "",
-                "contacto" => $ref["contacto"] ?? ""
-            ],
-            "nivel" => $nivel,
-            "activos" => (int)($nivelInfo["activos"] ?? 0)
-        ];
+        if (!empty($enNormales["ok"])) {
+            $normal = $enNormales["row"];
+            return [
+                "ok" => true,
+                "origen" => "clientes_normales",
+                "convertir_a_referente" => true,
+                "referente" => [
+                    "id" => 0,
+                    "normal_id" => (int)$normal["id"],
+                    "nombre" => $normal["nombre"] ?? "Sin nombre",
+                    "telegram" => $normal["telegram"] ?? "",
+                    "contacto" => $normal["contacto"] ?? ""
+                ],
+                "nivel" => "cobre",
+                "activos" => 0
+            ];
+        }
+
+        return ["ok" => false, "error" => ($enNormales["error"] ?? "Referente no encontrado")];
     } catch (Throwable $e) {
         return ["ok" => false, "error" => "Error al consultar referentes: ".$e->getMessage()];
     }
@@ -2984,18 +3013,91 @@ function aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente = [], $chat_i
 
 
 
-function aplicarNuevoReferidoRailway($usuario, $meses, $referente_id, $from_cliente = [], $chat_id_cliente = "") {
+function promoverClienteNormalAReferenteRailway($pdo, $normal_id) {
+    $normal_id = (int)$normal_id;
+    if ($normal_id <= 0) {
+        throw new Exception("Cliente normal no válido para convertir en referente.");
+    }
+
+    $st = $pdo->prepare("SELECT * FROM clientes_normales WHERE id=? LIMIT 1 FOR UPDATE");
+    $st->execute([$normal_id]);
+    $normal = $st->fetch();
+    if (!$normal) {
+        throw new Exception("El cliente normal que iba a convertirse ya no existe.");
+    }
+
+    // Evitar duplicados si ya fue convertido desde otra solicitud.
+    $chk = $pdo->prepare("SELECT id,nombre FROM clientes WHERE LOWER(TRIM(nombre))=LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(nombre)),' ','')=REPLACE(LOWER(TRIM(?)),' ','') LIMIT 1 FOR UPDATE");
+    $chk->execute([$normal["nombre"], $normal["nombre"]]);
+    $yaExiste = $chk->fetch();
+
+    if ($yaExiste) {
+        $pdo->prepare("DELETE FROM clientes_normales WHERE id=?")->execute([$normal_id]);
+        return ["id" => (int)$yaExiste["id"], "nombre" => $yaExiste["nombre"], "convertido" => true];
+    }
+
+    // Insertar únicamente en columnas que realmente existan en la tabla clientes.
+    $columnasDisponibles = [];
+    foreach ($pdo->query("SHOW COLUMNS FROM clientes")->fetchAll() as $col) {
+        $columnasDisponibles[$col["Field"]] = true;
+    }
+
+    $datos = [
+        "nombre" => $normal["nombre"] ?? "",
+        "contacto" => $normal["contacto"] ?? "",
+        "telefono" => $normal["telefono"] ?? "",
+        "telegram" => $normal["telegram"] ?? ""
+    ];
+
+    $cols = [];
+    $vals = [];
+    $params = [];
+    foreach ($datos as $campo => $valor) {
+        if (isset($columnasDisponibles[$campo])) {
+            $cols[] = $campo;
+            $vals[] = "?";
+            $params[] = $valor;
+        }
+    }
+
+    if (!in_array("nombre", $cols, true) || trim((string)($normal["nombre"] ?? "")) === "") {
+        throw new Exception("No se puede crear el referente porque falta su nombre.");
+    }
+
+    $sql = "INSERT INTO clientes(".implode(",", $cols).") VALUES(".implode(",", $vals).")";
+    $ins = $pdo->prepare($sql);
+    $ins->execute($params);
+    $nuevoId = (int)$pdo->lastInsertId();
+
+    if ($nuevoId <= 0) {
+        throw new Exception("No se pudo crear el nuevo referente.");
+    }
+
+    $pdo->prepare("DELETE FROM clientes_normales WHERE id=?")->execute([$normal_id]);
+
+    return ["id" => $nuevoId, "nombre" => $normal["nombre"], "convertido" => true];
+}
+
+function aplicarNuevoReferidoRailway($usuario, $meses, $referente_id, $from_cliente = [], $chat_id_cliente = "", $referente_normal_id = 0) {
     $usuario = trim((string)$usuario);
     $meses = (int)$meses;
     $referente_id = (int)$referente_id;
+    $referente_normal_id = (int)$referente_normal_id;
 
-    if ($usuario === "" || !in_array($meses, [3,6,12], true) || $referente_id <= 0) {
+    if ($usuario === "" || !in_array($meses, [3,6,12], true) || ($referente_id <= 0 && $referente_normal_id <= 0)) {
         return ["ok" => false, "error" => "Datos del nuevo referido no válidos."];
     }
 
     try {
         $pdo = getRailwayPdo();
         $pdo->beginTransaction();
+
+        $referenteConvertido = false;
+        if ($referente_id <= 0 && $referente_normal_id > 0) {
+            $promocion = promoverClienteNormalAReferenteRailway($pdo, $referente_normal_id);
+            $referente_id = (int)$promocion["id"];
+            $referenteConvertido = true;
+        }
 
         $st = $pdo->prepare("SELECT id,nombre FROM clientes WHERE id=? LIMIT 1 FOR UPDATE");
         $st->execute([$referente_id]);
@@ -3018,7 +3120,7 @@ function aplicarNuevoReferidoRailway($usuario, $meses, $referente_id, $from_clie
         $row=$ver->fetch();
         if (!$row) throw new Exception("Se insertó el referido, pero no se pudo verificar.");
         $pdo->commit();
-        return ["ok"=>true,"id"=>$id,"usuario"=>$row["nombre"],"nueva_caducidad"=>$row["fecha_caducidad"],"estado"=>$row["estado"],"referente_nombre"=>$row["referente_nombre"],"tipo_tabla"=>"referidos"];
+        return ["ok"=>true,"id"=>$id,"usuario"=>$row["nombre"],"nueva_caducidad"=>$row["fecha_caducidad"],"estado"=>$row["estado"],"referente_nombre"=>$row["referente_nombre"],"referente_convertido"=>$referenteConvertido,"tipo_tabla"=>"referidos"];
     } catch (Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
         return ["ok"=>false,"error"=>$e->getMessage()];
@@ -3408,14 +3510,15 @@ Tu usuario ha quedado vinculado correctamente.");
 
         if ($aprobar) {
             $resultado = (($pendiente["alta_tipo"] ?? "normal") === "referido")
-                ? aplicarNuevoReferidoRailway($usuario, $meses, (int)($pendiente["referente_id"] ?? 0), $from_cliente, $cliente_chat_id)
+                ? aplicarNuevoReferidoRailway($usuario, $meses, (int)($pendiente["referente_id"] ?? 0), $from_cliente, $cliente_chat_id, (int)($pendiente["referente_normal_id"] ?? 0))
                 : aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente, $cliente_chat_id);
 
             if (!empty($resultado["ok"])) {
                 borrarNuevoPendienteAdmin($state_file, $states, $nuevo_id);
                 $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
 
-                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n👤 Nombre Telegram:\n".telegramHtml($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".telegramHtml($aliasTxt)."\n\n🔗 Abrir chat:\n".telegramHtml($linkTelegram)."\n\n🆔 Chat ID:\n<code>".telegramHtml($cliente_chat_id)."</code>\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".telegramHtml($nueva)."\n\n".(($pendiente["alta_tipo"] ?? "normal") === "referido" ? "✅ Referido vinculado a: ".telegramHtml($resultado["referente_nombre"] ?? ($pendiente["referente_nombre"] ?? "No disponible"))."." : "✅ Cuenta creada en clientes_normales como Activo.")."\n━━━━━━━━━━━━━━━━━━", null, "HTML");
+                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n👤 Nombre Telegram:\n".telegramHtml($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".telegramHtml($aliasTxt)."\n\n🔗 Abrir chat:\n".telegramHtml($linkTelegram)."\n\n🆔 Chat ID:\n<code>".telegramHtml($cliente_chat_id)."</code>\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".telegramHtml($nueva)."\n\n".(($pendiente["alta_tipo"] ?? "normal") === "referido" ? "✅ Referido vinculado a: ".telegramHtml($resultado["referente_nombre"] ?? ($pendiente["referente_nombre"] ?? "No disponible")).".".(!empty($resultado["referente_convertido"]) ? "
+🔄 El cliente normal fue convertido automáticamente en Referente VIP." : "") : "✅ Cuenta creada en clientes_normales como Activo.")."\n━━━━━━━━━━━━━━━━━━", null, "HTML");
 
                 if ($cliente_chat_id !== "") {
                     sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\n".(($pendiente["alta_tipo"] ?? "normal") === "referido" ? "Tu cuenta ha sido creada y vinculada correctamente a tu referente." : "Tu cuenta nueva ya ha sido creada y activada.")."\n\n👤 Usuario MDPRIME:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".telegramHtml($nueva)."\n\n⭐ Gracias por confiar en MDPRIME.", true, "HTML");
@@ -3988,7 +4091,7 @@ if ($user_state === "referir_referente") {
 
     $infoRef = buscarReferenteParaAlta($nombre_referente);
 
-    if (empty($infoRef["ok"]) || empty($infoRef["referente"]["id"])) {
+    if (empty($infoRef["ok"]) || (empty($infoRef["referente"]["id"]) && empty($infoRef["referente"]["normal_id"]))) {
         sendMessage($chat_id, "❌ No encuentro ese referente.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nDetalle:\n".($infoRef["error"] ?? "No encontrado")."\n\nPuedes escribir su nombre del panel, su usuario de Telegram o su contacto.\n\nVuelve a escribirlo o pulsa /soporte.");
         http_response_code(200);
         exit;
@@ -4003,7 +4106,9 @@ if ($user_state === "referir_referente") {
     $states[$chat_id]["mode"] = "referir_usuario";
     $states[$chat_id]["referir_context"] = [
         "alta_tipo" => "referido",
-        "referente_id" => (int)$infoRef["referente"]["id"],
+        "referente_id" => (int)($infoRef["referente"]["id"] ?? 0),
+        "referente_normal_id" => (int)($infoRef["referente"]["normal_id"] ?? 0),
+        "convertir_referente" => !empty($infoRef["convertir_a_referente"]),
         "referente_nombre" => $infoRef["referente"]["nombre"],
         "nivel_referente" => $nivelRef
     ];
