@@ -122,6 +122,33 @@ function telegramHtml($text) {
     return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
 }
 
+function configurarComandosTelegram() {
+    $commands = [
+        ["command" => "start", "description" => "Abrir el menú principal"],
+        ["command" => "micuenta", "description" => "Consultar mi cuenta"],
+        ["command" => "caducidad", "description" => "Consultar caducidad"],
+        ["command" => "misreferidos", "description" => "Ver mis referidos"],
+        ["command" => "planes", "description" => "Ver planes normales"],
+        ["command" => "referidos", "description" => "Ver tarifas Referidos VIP"],
+        ["command" => "queesreferidos", "description" => "Cómo funciona Referidos VIP"],
+        ["command" => "renovar", "description" => "Solicitar una renovación"],
+        ["command" => "comorenovar", "description" => "Cómo renovar paso a paso"],
+        ["command" => "nuevo", "description" => "Crear una cuenta normal"],
+        ["command" => "referir", "description" => "Unir una cuenta a un referente"],
+        ["command" => "multicuenta", "description" => "Contratar 2 o 3 cuentas"],
+        ["command" => "apps", "description" => "Descargar aplicaciones"],
+        ["command" => "agenda", "description" => "Ver la agenda deportiva"],
+        ["command" => "soporte", "description" => "Contactar con soporte"],
+        ["command" => "cambiarusuario", "description" => "Cambiar usuario vinculado"]
+    ];
+
+    return telegramRequest("setMyCommands", [
+        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
+        "scope" => json_encode(["type" => "all_private_chats"]),
+        "language_code" => "es"
+    ]);
+}
+
 function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     $data = [
         "chat_id" => $chat_id,
@@ -4670,7 +4697,29 @@ Detalle:
         sendLongMessage($chat_id, $msg);
         break;
 
+    case "/actualizarcomandos":
+        if ((string)$chat_id !== (string)$admin_id) {
+            sendMessage($chat_id, "❌ Comando exclusivo para administración.");
+            break;
+        }
+
+        $resultadoComandos = configurarComandosTelegram();
+        if (!empty($resultadoComandos["ok"])) {
+            sendMessage($chat_id, "✅ Menú de comandos actualizado.
+
+Ya deben aparecer /referir y /multicuenta.
+
+Pulsa /start para refrescar el teclado.");
+        } else {
+            sendMessage($chat_id, "❌ No se pudo actualizar el menú de comandos de Telegram.");
+        }
+        break;
+
     case "/start":
+
+        // Actualiza el menú de comandos de Telegram para que aparezcan
+        // /referir y /multicuenta al pulsar el botón de comandos.
+        configurarComandosTelegram();
 
         $msg = "🔥 BIENVENIDO A MDPRIME 🔥
 
