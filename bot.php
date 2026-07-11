@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V49-NUEVO-REFERIDO-20260711";
+$bot_version = "MDPRIME-BOT-V48-CONFIRMACION-NOMBRE-RENOVAR-NUEVO-20260710";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -158,10 +158,6 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
                 ],
                 [
                     ["text" => "/nuevo"],
-                    ["text" => "/multicuenta"]
-                ],
-                [
-                    ["text" => "/referir"],
                     ["text" => "/soporte"]
                 ],
                 [
@@ -2609,140 +2605,6 @@ Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo ant
 
 
 
-
-
-/* =========================
-   NUEVO REFERIDO VIP
-========================= */
-function referirDuracionKeyboard($nivel) {
-    return ["inline_keyboard" => [
-        [["text" => "📦 3 meses · ".renovarPrecioReferidos($nivel,3)."€", "callback_data" => "ref_dur_3"]],
-        [["text" => "📦 6 meses · ".renovarPrecioReferidos($nivel,6)."€", "callback_data" => "ref_dur_6"]],
-        [["text" => "📦 12 meses · ".renovarPrecioReferidos($nivel,12)."€", "callback_data" => "ref_dur_12"]],
-        [["text" => "❌ Cancelar", "callback_data" => "ref_cancelar"]]
-    ]];
-}
-function referirConfirmarKeyboard(){ return ["inline_keyboard"=>[
-    [["text"=>"✅ Sí, continuar","callback_data"=>"ref_nombre_si"]],
-    [["text"=>"✏️ No, escribir de nuevo","callback_data"=>"ref_nombre_no"]]
-]]; }
-function guardarReferirEstado($file,&$states,$chat_id,$data,$mode="referir_opciones"){
-    if(!isset($states[$chat_id])||!is_array($states[$chat_id])) $states[$chat_id]=[];
-    $states[$chat_id]["mode"]=$mode; $states[$chat_id]["referir_data"]=$data; saveStates($file,$states);
-}
-function referirEstado($states,$chat_id){ return (isset($states[$chat_id])&&is_array($states[$chat_id]))?($states[$chat_id]["referir_data"]??[]):[]; }
-function limpiarReferirEstado($file,&$states,$chat_id){ if(isset($states[$chat_id])&&is_array($states[$chat_id])){ unset($states[$chat_id]["mode"],$states[$chat_id]["referir_data"]); if(empty($states[$chat_id])) unset($states[$chat_id]); saveStates($file,$states);} }
-function guardarReferidoPendienteAdmin($file,&$states,$id,$data){ if(!isset($states["_referidos_pendientes"])||!is_array($states["_referidos_pendientes"]))$states["_referidos_pendientes"]=[]; $data["id"]=$id;$states["_referidos_pendientes"][$id]=$data;saveStates($file,$states); }
-function obtenerReferidoPendienteAdmin($states,$id){ return $states["_referidos_pendientes"][$id]??null; }
-function borrarReferidoPendienteAdmin($file,&$states,$id){ unset($states["_referidos_pendientes"][$id]); if(empty($states["_referidos_pendientes"]))unset($states["_referidos_pendientes"]);saveStates($file,$states); }
-function tecladoAdminReferido($id){ return ["inline_keyboard"=>[
-    [["text"=>"✅ Aprobar referido","callback_data"=>"admin_ref_ok_".$id]],
-    [["text"=>"💬 Abrir chat","callback_data"=>"admin_ref_chat_".$id]],
-    [["text"=>"❌ Rechazar pago","callback_data"=>"admin_ref_no_".$id]]
-]]; }
-function mensajePagoReferido($d){ global $payment_link; $m=(int)($d["meses"]??0);$n=$d["nivel"]??"cobre";$p=renovarPrecioReferidos($n,$m); return "👥 ALTA DE NUEVO REFERIDO
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Nuevo usuario:
-".($d["usuario"]??"")."
-
-👥 Referente:
-".($d["referente_nombre"]??"")."
-
-🏆 Nivel:
-".renovarNivelTxt($n)."
-
-📦 Duración:
-".$m." meses
-
-💶 Importe:
-".$p."€
-
-━━━━━━━━━━━━━━━━━━
-
-🔗 Enlace de pago:
-".$payment_link."
-
-📸 Cuando termines, envía aquí la captura del comprobante."; }
-function aplicarNuevoReferidoRailway($d) {
-    $pdo = null;
-
-    try {
-        $pdo = getRailwayPdo();
-        $nombre = trim((string)($d["usuario"] ?? ""));
-        $cliente_id = (int)($d["referente_id"] ?? 0);
-        $meses = (int)($d["meses"] ?? 0);
-
-        if ($nombre === "" || $cliente_id <= 0 || !in_array($meses, [3, 6, 12], true)) {
-            return ["ok" => false, "error" => "Datos incompletos para crear el referido."];
-        }
-
-        $pdo->beginTransaction();
-
-        // Confirmar que el referente existe y bloquearlo durante el alta.
-        $stRef = $pdo->prepare("SELECT id, nombre FROM clientes WHERE id = ? LIMIT 1 FOR UPDATE");
-        $stRef->execute([$cliente_id]);
-        $referente = $stRef->fetch();
-
-        if (!$referente) {
-            $pdo->rollBack();
-            return ["ok" => false, "error" => "No se encontró el referente en la base de datos."];
-        }
-
-        // Evitar que el mismo nombre exista como referido, cliente normal o referente.
-        $comprobaciones = [
-            ["tabla" => "referidos", "campo" => "nombre"],
-            ["tabla" => "clientes_normales", "campo" => "nombre"],
-            ["tabla" => "clientes", "campo" => "nombre"]
-        ];
-
-        foreach ($comprobaciones as $info) {
-            try {
-                $sql = "SELECT id FROM ".$info["tabla"]." WHERE LOWER(TRIM(".$info["campo"].")) = LOWER(TRIM(?)) LIMIT 1";
-                $chk = $pdo->prepare($sql);
-                $chk->execute([$nombre]);
-
-                if ($chk->fetch()) {
-                    $pdo->rollBack();
-                    return ["ok" => false, "error" => "Ese nombre de usuario ya existe en la base de datos."];
-                }
-            } catch (Throwable $e) {
-                // La tabla clientes_normales puede no existir en instalaciones antiguas.
-                if ($info["tabla"] !== "clientes_normales") {
-                    throw $e;
-                }
-            }
-        }
-
-        $alta = date("Y-m-d");
-        $caducidad = date("Y-m-d", strtotime("+".$meses." months"));
-        $nota = "Alta creada desde bot · Vinculado a ".($referente["nombre"] ?? "referente #".$cliente_id);
-
-        // cliente_id es la relación directa con el referente.
-        $st = $pdo->prepare("INSERT INTO referidos (cliente_id, nombre, fecha_alta, fecha_caducidad, estado, nota) VALUES (?, ?, ?, ?, 'Activo', ?)");
-        $st->execute([$cliente_id, $nombre, $alta, $caducidad, $nota]);
-        $referido_id = (int)$pdo->lastInsertId();
-
-        $pdo->commit();
-
-        return [
-            "ok" => true,
-            "referido_id" => $referido_id,
-            "referente_id" => $cliente_id,
-            "referente_nombre" => $referente["nombre"] ?? "",
-            "nueva_caducidad" => $caducidad
-        ];
-
-    } catch (Throwable $e) {
-        if ($pdo instanceof PDO && $pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
-
-        return ["ok" => false, "error" => $e->getMessage()];
-    }
-}
-
 /* =========================
    NUEVA CUENTA MDPRIME
 ========================= */
@@ -3033,155 +2895,6 @@ function aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente = [], $chat_i
     }
 }
 
-
-/* =========================
-   PLANES MULTICUENTA
-   Exclusivo para clientes normales
-========================= */
-function multicuentaPrecio($cantidad, $meses) {
-    $precios = [
-        1 => [3 => 35, 6 => 55, 12 => 80],
-        2 => [3 => 55, 6 => 85, 12 => 120],
-        3 => [3 => 80, 6 => 125, 12 => 165]
-    ];
-    return $precios[(int)$cantidad][(int)$meses] ?? 0;
-}
-
-function multicuentaCantidadKeyboard() {
-    return ["inline_keyboard" => [
-        [["text" => "👤 1 usuario", "callback_data" => "mc_cant_1"]],
-        [["text" => "👥 2 usuarios", "callback_data" => "mc_cant_2"]],
-        [["text" => "👨‍👩‍👦 3 usuarios", "callback_data" => "mc_cant_3"]],
-        [["text" => "❌ Cancelar", "callback_data" => "mc_cancelar"]]
-    ]];
-}
-
-function multicuentaDuracionKeyboard($cantidad) {
-    return ["inline_keyboard" => [
-        [["text" => "📦 3 meses · ".multicuentaPrecio($cantidad, 3)."€", "callback_data" => "mc_dur_3"]],
-        [["text" => "📦 6 meses · ".multicuentaPrecio($cantidad, 6)."€", "callback_data" => "mc_dur_6"]],
-        [["text" => "📦 12 meses · ".multicuentaPrecio($cantidad, 12)."€", "callback_data" => "mc_dur_12"]],
-        [["text" => "❌ Cancelar", "callback_data" => "mc_cancelar"]]
-    ]];
-}
-
-function multicuentaConfirmarNombreKeyboard() {
-    return ["inline_keyboard" => [
-        [["text" => "✅ Sí, es correcto", "callback_data" => "mc_nombre_si"]],
-        [["text" => "✏️ No, escribir de nuevo", "callback_data" => "mc_nombre_no"]]
-    ]];
-}
-
-function multicuentaResumenKeyboard() {
-    return ["inline_keyboard" => [
-        [["text" => "✅ Continuar al pago", "callback_data" => "mc_pago"]],
-        [["text" => "❌ Cancelar", "callback_data" => "mc_cancelar"]]
-    ]];
-}
-
-function guardarMulticuentaEstado($file, &$states, $chat_id, $data, $mode = "multicuenta_opciones") {
-    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
-    $states[$chat_id]["mode"] = $mode;
-    $states[$chat_id]["multicuenta_data"] = $data;
-    saveStates($file, $states);
-}
-
-function multicuentaEstado($states, $chat_id) {
-    return (isset($states[$chat_id]) && is_array($states[$chat_id])) ? ($states[$chat_id]["multicuenta_data"] ?? []) : [];
-}
-
-function limpiarMulticuentaEstado($file, &$states, $chat_id) {
-    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
-        unset($states[$chat_id]["mode"], $states[$chat_id]["multicuenta_data"]);
-        if (empty($states[$chat_id])) unset($states[$chat_id]);
-        saveStates($file, $states);
-    }
-}
-
-function guardarMulticuentaPendienteAdmin($file, &$states, $id, $data) {
-    if (!isset($states["_multicuentas_pendientes"]) || !is_array($states["_multicuentas_pendientes"])) $states["_multicuentas_pendientes"] = [];
-    $data["id"] = $id;
-    $states["_multicuentas_pendientes"][$id] = $data;
-    saveStates($file, $states);
-}
-
-function obtenerMulticuentaPendienteAdmin($states, $id) { return $states["_multicuentas_pendientes"][$id] ?? null; }
-function borrarMulticuentaPendienteAdmin($file, &$states, $id) {
-    unset($states["_multicuentas_pendientes"][$id]);
-    if (empty($states["_multicuentas_pendientes"])) unset($states["_multicuentas_pendientes"]);
-    saveStates($file, $states);
-}
-
-function tecladoAdminMulticuenta($id) {
-    return ["inline_keyboard" => [
-        [["text" => "✅ Aprobar todas las cuentas", "callback_data" => "admin_mc_ok_".$id]],
-        [["text" => "💬 Abrir datos del cliente", "callback_data" => "admin_mc_chat_".$id]],
-        [["text" => "❌ Rechazar pago", "callback_data" => "admin_mc_no_".$id]]
-    ]];
-}
-
-function multicuentaNombreExiste($nombre) {
-    $nombre = trim((string)$nombre);
-    if ($nombre === "") return true;
-    try {
-        $pdo = getRailwayPdo();
-        foreach (["clientes_normales", "referidos", "clientes"] as $tabla) {
-            try {
-                $st = $pdo->prepare("SELECT id FROM ".$tabla." WHERE LOWER(TRIM(nombre))=LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(nombre)),' ','')=REPLACE(LOWER(TRIM(?)),' ','') LIMIT 1");
-                $st->execute([$nombre, $nombre]);
-                if ($st->fetch()) return true;
-            } catch (Throwable $e) {
-                if ($tabla !== "clientes_normales") throw $e;
-            }
-        }
-    } catch (Throwable $e) {
-        return true; // ante un error, no permitir altas dudosas
-    }
-    return false;
-}
-
-function multicuentaResumenTexto($d) {
-    $cantidad = (int)($d["cantidad"] ?? 0);
-    $meses = (int)($d["meses"] ?? 0);
-    $usuarios = $d["usuarios"] ?? [];
-    $txt = "📋 RESUMEN MULTICUENTA\n\n━━━━━━━━━━━━━━━━━━\n\n";
-    foreach ($usuarios as $i => $u) $txt .= "👤 Usuario ".($i+1).":\n".$u." ✅\n\n";
-    $txt .= "━━━━━━━━━━━━━━━━━━\n\n👥 Paquete:\n".$cantidad." usuario".($cantidad===1?"":"s")."\n\n📦 Duración:\n".$meses." meses\n\n💶 Importe total:\n".multicuentaPrecio($cantidad,$meses)."€\n\n━━━━━━━━━━━━━━━━━━\n\nSe realizará un único pago para todas las cuentas.\n\n¿Deseas continuar?";
-    return $txt;
-}
-
-function multicuentaPagoTexto($d) {
-    global $payment_link;
-    $cantidad=(int)($d["cantidad"]??0); $meses=(int)($d["meses"]??0);
-    return multicuentaResumenTexto($d)."\n\n🔗 Enlace de pago:\n".$payment_link."\n\n📸 Cuando termines, envía aquí una sola captura del comprobante.";
-}
-
-function aplicarMulticuentaRailway($d) {
-    $pdo = null;
-    try {
-        $cantidad=(int)($d["cantidad"]??0); $meses=(int)($d["meses"]??0); $usuarios=$d["usuarios"]??[];
-        if (!in_array($cantidad,[1,2,3],true) || !in_array($meses,[3,6,12],true) || count($usuarios)!==$cantidad) return ["ok"=>false,"error"=>"Datos incompletos."];
-        $normalizados=[];
-        foreach($usuarios as $u){ $u=trim((string)$u); $k=mb_strtolower(str_replace(' ','',$u),'UTF-8'); if($u===''||isset($normalizados[$k])) return ["ok"=>false,"error"=>"Hay nombres vacíos o repetidos."]; $normalizados[$k]=true; }
-        $pdo=getRailwayPdo();
-        $pdo->exec("CREATE TABLE IF NOT EXISTS clientes_normales(id INT AUTO_INCREMENT PRIMARY KEY,nombre VARCHAR(150) NOT NULL,contacto VARCHAR(150) DEFAULT '',telefono VARCHAR(150) DEFAULT '',telegram VARCHAR(100) DEFAULT '',fecha_alta DATE NULL,fecha_caducidad DATE NULL,estado VARCHAR(20) DEFAULT 'Activo',nota TEXT,creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        $pdo->beginTransaction();
-        foreach($usuarios as $u){
-            foreach(["clientes_normales","referidos","clientes"] as $tabla){
-                $st=$pdo->prepare("SELECT id FROM ".$tabla." WHERE LOWER(TRIM(nombre))=LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(nombre)),' ','')=REPLACE(LOWER(TRIM(?)),' ','') LIMIT 1 FOR UPDATE");
-                $st->execute([$u,$u]); if($st->fetch()){ $pdo->rollBack(); return ["ok"=>false,"error"=>"El usuario ".$u." ya existe."]; }
-            }
-        }
-        $from=$d["telegram_from"]??[]; $chat=(string)($d["chat_id_cliente"]??''); $telegram=$from["username"]??''; $contacto=$telegram!==''?'@'.$telegram:'Chat ID: '.$chat;
-        $ins=$pdo->prepare("INSERT INTO clientes_normales(nombre,contacto,telefono,telegram,fecha_alta,fecha_caducidad,estado,nota) VALUES(?,?,?,?,CURDATE(),DATE_ADD(CURDATE(), INTERVAL ".$meses." MONTH),'Activo',?)");
-        $creados=[];
-        foreach($usuarios as $u){ $nota="Alta multicuenta creada desde el bot. Paquete de ".$cantidad." usuarios con un único pago."; $ins->execute([$u,$contacto,$chat,$telegram,$nota]); $creados[]=["id"=>(int)$pdo->lastInsertId(),"usuario"=>$u]; }
-        $cad=date('Y-m-d',strtotime('+'.$meses.' months'));
-        $pdo->commit();
-        return ["ok"=>true,"usuarios"=>$creados,"nueva_caducidad"=>$cad];
-    } catch(Throwable $e){ if($pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack(); return ["ok"=>false,"error"=>$e->getMessage()]; }
-}
-
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -3391,118 +3104,6 @@ Tu usuario ha quedado vinculado correctamente.");
 
         http_response_code(200);
         exit;
-    }
-
-
-
-    if (strpos($callback_data, "mc_cant_") === 0 || $callback_data === "mc_cancelar") {
-        if ($callback_data === "mc_cancelar") { limpiarMulticuentaEstado($state_file,$states,$chat_id); editMessageText($chat_id,$message_id,"❌ Contratación multicuenta cancelada."); http_response_code(200); exit; }
-        $cantidad=(int)str_replace("mc_cant_","",$callback_data);
-        if(!in_array($cantidad,[1,2,3],true)){http_response_code(200);exit;}
-        $d=["cantidad"=>$cantidad,"usuarios"=>[],"indice"=>0];
-        guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"multicuenta_duracion");
-        editMessageText($chat_id,$message_id,"👥 PLAN MULTICUENTA\n\nHas elegido:\n".$cantidad." usuario".($cantidad===1?"":"s")."\n\nSelecciona la duración:",multicuentaDuracionKeyboard($cantidad));
-        http_response_code(200); exit;
-    }
-    if (strpos($callback_data, "mc_dur_") === 0) {
-        $d=multicuentaEstado($states,$chat_id); if(empty($d)){http_response_code(200);exit;}
-        $meses=(int)str_replace("mc_dur_","",$callback_data); if(!in_array($meses,[3,6,12],true)){http_response_code(200);exit;}
-        $d["meses"]=$meses; $d["indice"]=0; $d["usuarios"]=[];
-        guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"multicuenta_usuario");
-        editMessageText($chat_id,$message_id,"👤 Escribe el nombre del Usuario 1.\n\n⚠️ Después te pediremos confirmación para evitar errores.");
-        http_response_code(200); exit;
-    }
-    if ($callback_data === "mc_nombre_si" || $callback_data === "mc_nombre_no") {
-        $d=multicuentaEstado($states,$chat_id); if(empty($d)){http_response_code(200);exit;}
-        $indice=(int)($d["indice"]??0);
-        if($callback_data === "mc_nombre_no") { unset($d["usuario_pendiente"]); guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"multicuenta_usuario"); editMessageText($chat_id,$message_id,"✏️ Escribe de nuevo el nombre del Usuario ".($indice+1)."."); http_response_code(200); exit; }
-        $pend=trim((string)($d["usuario_pendiente"]??'')); if($pend===''){http_response_code(200);exit;}
-        $d["usuarios"][]=$pend; unset($d["usuario_pendiente"]); $d["indice"]=$indice+1;
-        if($d["indice"] < (int)$d["cantidad"]){ guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"multicuenta_usuario"); editMessageText($chat_id,$message_id,"✅ Usuario ".($indice+1)." confirmado.\n\n👤 Escribe el nombre del Usuario ".($d["indice"]+1)."."); }
-        else { guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"multicuenta_resumen"); editMessageText($chat_id,$message_id,multicuentaResumenTexto($d),multicuentaResumenKeyboard()); }
-        http_response_code(200); exit;
-    }
-    if ($callback_data === "mc_pago") {
-        $d=multicuentaEstado($states,$chat_id); if(empty($d)){http_response_code(200);exit;}
-        guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"esperando_comprobante_multicuenta");
-        editMessageText($chat_id,$message_id,multicuentaPagoTexto($d)); http_response_code(200); exit;
-    }
-    if (strpos($callback_data,"admin_mc_ok_")===0 || strpos($callback_data,"admin_mc_no_")===0 || strpos($callback_data,"admin_mc_chat_")===0) {
-        if((string)$chat_id!==(string)$admin_id){http_response_code(200);exit;}
-        $ok=strpos($callback_data,"admin_mc_ok_")===0; $chat=strpos($callback_data,"admin_mc_chat_")===0;
-        $id=substr($callback_data,strlen($ok?"admin_mc_ok_":($chat?"admin_mc_chat_":"admin_mc_no_"))); $d=obtenerMulticuentaPendienteAdmin($states,$id);
-        if(!$d){editMessageText($chat_id,$message_id,"ℹ️ Esta solicitud ya fue gestionada.");http_response_code(200);exit;}
-        $cliente_chat=$d["chat_id_cliente"]??'';
-        if($chat){$lista=implode("\n",array_map(fn($u,$i)=>($i+1).". ".$u,$d["usuarios"],array_keys($d["usuarios"])));sendMessage($chat_id,"💬 DATOS MULTICUENTA\n\n👤 Usuarios:\n".$lista."\n\n🆔 Chat ID: ".$cliente_chat."\n\n/reply ".$cliente_chat." Hola, ");http_response_code(200);exit;}
-        if($ok){$r=aplicarMulticuentaRailway($d);if(!empty($r["ok"])){borrarMulticuentaPendienteAdmin($state_file,$states,$id);$lista=implode("\n",array_map(fn($u,$i)=>($i+1).". <code>".telegramHtml($u)."</code>",$d["usuarios"],array_keys($d["usuarios"])));$cad=fechaBonita($r["nueva_caducidad"]);editMessageText($chat_id,$message_id,"✅ MULTICUENTA APROBADA\n\n👥 Cuentas creadas:\n".$lista."\n\n📦 Plan: ".$d["cantidad"]." usuarios · ".$d["meses"]." meses\n💶 Importe: ".multicuentaPrecio($d["cantidad"],$d["meses"])."€\n📅 Caducidad: ".$cad."\n\n✅ Todas se guardaron como clientes normales.",null,"HTML");if($cliente_chat!=='')sendMessage($cliente_chat,"✅ Pago aprobado.\n\nTus ".$d["cantidad"]." cuentas han sido creadas correctamente como clientes normales.\n\n👤 Usuarios:\n".$lista."\n\n📦 Duración: ".$d["meses"]." meses\n📅 Caducidad: ".$cad,true,"HTML");}else editMessageText($chat_id,$message_id,"❌ No se pudieron crear las cuentas:\n".($r["error"]??"Error desconocido"));}
-        else {borrarMulticuentaPendienteAdmin($state_file,$states,$id);editMessageText($chat_id,$message_id,"❌ PAGO MULTICUENTA RECHAZADO");if($cliente_chat!=='')sendMessage($cliente_chat,"❌ No hemos podido validar el pago. No se creó ninguna cuenta.");}
-        http_response_code(200);exit;
-    }
-
-    if ($callback_data === "ref_nombre_si" || $callback_data === "ref_nombre_no") {
-        $d=referirEstado($states,$chat_id);
-        if($callback_data === "ref_nombre_no") { guardarReferirEstado($state_file,$states,$chat_id,$d,"referir_usuario"); editMessageText($chat_id,$message_id,"✏️ Escribe de nuevo el nombre del nuevo referido."); http_response_code(200); exit; }
-        if(empty($d["usuario"])) { editMessageText($chat_id,$message_id,"⚠️ No hay usuario pendiente. Inicia de nuevo con /referir."); http_response_code(200); exit; }
-        guardarReferirEstado($state_file,$states,$chat_id,$d,"referir_opciones");
-        editMessageText($chat_id,$message_id,"👥 NUEVO REFERIDO VIP
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Nuevo usuario:
-".$d["usuario"]."
-
-👥 Referente:
-".$d["referente_nombre"]."
-
-🏆 Nivel aplicado:
-".renovarNivelTxt($d["nivel"])."
-
-Selecciona la duración:",referirDuracionKeyboard($d["nivel"]));
-        http_response_code(200); exit;
-    }
-    if (strpos($callback_data,"ref_dur_")===0 || $callback_data==="ref_cancelar") {
-        $d=referirEstado($states,$chat_id); if(empty($d)){http_response_code(200);exit;}
-        if($callback_data==="ref_cancelar"){limpiarReferirEstado($state_file,$states,$chat_id);editMessageText($chat_id,$message_id,"❌ Alta de referido cancelada.");http_response_code(200);exit;}
-        $d["meses"]=(int)str_replace("ref_dur_","",$callback_data); guardarReferirEstado($state_file,$states,$chat_id,$d,"esperando_comprobante_referido"); editMessageText($chat_id,$message_id,mensajePagoReferido($d)); http_response_code(200);exit;
-    }
-    if (strpos($callback_data,"admin_ref_ok_")===0 || strpos($callback_data,"admin_ref_no_")===0 || strpos($callback_data,"admin_ref_chat_")===0) {
-        if((string)$chat_id!==(string)$admin_id){http_response_code(200);exit;}
-        $ok=strpos($callback_data,"admin_ref_ok_")===0;$chat=strpos($callback_data,"admin_ref_chat_")===0;
-        $id=substr($callback_data,strlen($ok?"admin_ref_ok_":($chat?"admin_ref_chat_":"admin_ref_no_")));$d=obtenerReferidoPendienteAdmin($states,$id);
-        if(!$d){editMessageText($chat_id,$message_id,"ℹ️ Esta solicitud ya fue gestionada.");http_response_code(200);exit;}
-        $cliente_chat=$d["chat_id_cliente"]??"";$precio=renovarPrecioReferidos($d["nivel"]??"cobre",(int)$d["meses"]);
-        if($chat){sendMessage($chat_id,"💬 DATOS DEL REFERIDO
-
-👥 Referente: ".$d["referente_nombre"]."
-👤 Nuevo usuario: ".$d["usuario"]."
-🆔 Chat ID: ".$cliente_chat."
-
-/reply ".$cliente_chat." Hola, ");http_response_code(200);exit;}
-        if($ok){$r=aplicarNuevoReferidoRailway($d);if(!empty($r["ok"])){borrarReferidoPendienteAdmin($state_file,$states,$id);$cad=fechaBonita($r["nueva_caducidad"]);editMessageText($chat_id,$message_id,"✅ REFERIDO APROBADO
-
-👥 Referente:
-".$d["referente_nombre"]."
-
-👤 Usuario creado:
-<code>".telegramHtml($d["usuario"])."</code>
-
-📦 Plan: ".$d["meses"]." meses
-💶 Importe: ".$precio."€
-📅 Caducidad: ".$cad."
-🔗 Vinculado al referente: ".telegramHtml($d["referente_nombre"]),null,"HTML");if($cliente_chat!=="")sendMessage($cliente_chat,"✅ Pago aprobado.
-
-El nuevo referido ha sido creado y vinculado correctamente a tu cuenta.
-
-✅ Ya aparecerá en /misreferidos y contará para tu nivel VIP.
-
-👤 Usuario:
-<code>".telegramHtml($d["usuario"])."</code>
-👥 Referente: ".telegramHtml($d["referente_nombre"])."
-📦 Plan: ".$d["meses"]." meses
-📅 Caducidad: ".$cad,true,"HTML");}else editMessageText($chat_id,$message_id,"❌ No se pudo crear el referido:
-".($r["error"]??"Error desconocido"));}
-        else {borrarReferidoPendienteAdmin($state_file,$states,$id);editMessageText($chat_id,$message_id,"❌ ALTA DE REFERIDO RECHAZADA");if($cliente_chat!=="")sendMessage($cliente_chat,"❌ No hemos podido validar el pago. No se creó el referido.");}
-        http_response_code(200);exit;
     }
 
     if (strpos($callback_data, "admin_new_ok_") === 0 || strpos($callback_data, "admin_new_no_") === 0 || strpos($callback_data, "admin_new_chat_") === 0) {
@@ -3841,48 +3442,6 @@ $message_id = $update["message"]["message_id"] ?? null;
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
 
-
-
-if ($user_state === "esperando_comprobante_multicuenta") {
-    $tiene=isset($update["message"]["photo"])||isset($update["message"]["document"]);
-    if($tiene && $message_id){
-        $d=multicuentaEstado($states,$chat_id); $id=uniqid("mc"); $d["chat_id_cliente"]=$chat_id; $d["telegram_from"]=$update["message"]["from"]??[];
-        guardarMulticuentaPendienteAdmin($state_file,$states,$id,$d);
-        $lista=implode("\n",array_map(fn($u,$i)=>($i+1).". ".$u,$d["usuarios"],array_keys($d["usuarios"])));
-        sendInlineMessage($admin_id,"👥 NUEVO COMPROBANTE MULTICUENTA\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuarios:\n".$lista."\n\n📦 Paquete:\n".$d["cantidad"]." usuarios · ".$d["meses"]." meses\n\n💶 Importe total:\n".multicuentaPrecio($d["cantidad"],$d["meses"])."€\n\n✅ Revisa el comprobante y aprueba o rechaza todas las cuentas.",tecladoAdminMulticuenta($id));
-        forwardMessage($admin_id,$chat_id,$message_id); limpiarMulticuentaEstado($state_file,$states,$chat_id);
-        sendMessage($chat_id,"✅ Comprobante recibido.\n\nLa contratación queda pendiente de revisión. Las cuentas no se crearán hasta que el pago sea aprobado.");
-        http_response_code(200);exit;
-    }
-    if($text!==''&&substr($text,0,1)!=='/'){sendMessage($chat_id,"📸 Envía una sola captura o imagen del comprobante para finalizar la contratación multicuenta.");http_response_code(200);exit;}
-}
-
-if ($user_state === "esperando_comprobante_referido") {
-    $tiene=isset($update["message"]["photo"])||isset($update["message"]["document"]);
-    if($tiene && $message_id){$d=referirEstado($states,$chat_id);$id=uniqid("ref");$d["chat_id_cliente"]=$chat_id;$d["telegram_from"]=$update["message"]["from"]??[];guardarReferidoPendienteAdmin($state_file,$states,$id,$d);
-        $precio=renovarPrecioReferidos($d["nivel"],(int)$d["meses"]);sendInlineMessage($admin_id,"👥 NUEVO COMPROBANTE DE REFERIDO
-
-━━━━━━━━━━━━━━━━━━
-
-👥 Referente:
-".$d["referente_nombre"]."
-
-👤 Nuevo usuario:
-".$d["usuario"]."
-
-🏆 Nivel:
-".renovarNivelTxt($d["nivel"])."
-
-📦 Duración:
-".$d["meses"]." meses
-
-💶 Importe:
-".$precio."€
-
-✅ Revisa el comprobante y aprueba o rechaza.",tecladoAdminReferido($id));forwardMessage($admin_id,$chat_id,$message_id);limpiarReferirEstado($state_file,$states,$chat_id);sendMessage($chat_id,"✅ Comprobante recibido. Queda pendiente de revisión y aprobación.");http_response_code(200);exit;}
-    if($text!==""&&substr($text,0,1)!=="/"){sendMessage($chat_id,"📸 Envía una captura o imagen del comprobante.");http_response_code(200);exit;}
-}
-
 // Si estamos esperando el comprobante de alta nueva, aceptar captura/foto/documento.
 if ($user_state === "esperando_comprobante_nuevo") {
     $tiene_comprobante = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
@@ -3995,7 +3554,7 @@ $message_id = $update["message"]["message_id"] ?? null;
 
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
-$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/nuevo", "/multicuenta", "/referir", "/soporte"];
+$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/nuevo", "/soporte"];
 
 if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
     if ($message_id) {
@@ -4159,32 +3718,6 @@ if ($user_state === "confirmando_usuario_mdprime") {
     exit;
 }
 
-
-
-if ($user_state === "multicuenta_usuario") {
-    $nuevo=trim(preg_replace('/\s+/',' ',str_replace(["\r","\n","\t"],' ',$text)));
-    $d=multicuentaEstado($states,$chat_id); $indice=(int)($d["indice"]??0);
-    if($nuevo===''||substr($nuevo,0,1)==='/'){sendMessage($chat_id,"👤 Escribe el nombre del Usuario ".($indice+1).".");http_response_code(200);exit;}
-    $key=mb_strtolower(str_replace(' ','',$nuevo),'UTF-8');
-    foreach(($d["usuarios"]??[]) as $ya){if(mb_strtolower(str_replace(' ','',$ya),'UTF-8')===$key){sendMessage($chat_id,"❌ Ese nombre ya se ha usado en esta contratación. Escribe uno diferente.");http_response_code(200);exit;}}
-    if(multicuentaNombreExiste($nuevo)){sendMessage($chat_id,"❌ Ese nombre de usuario ya está en uso.\n\nEscribe otro nombre para el Usuario ".($indice+1).".");http_response_code(200);exit;}
-    $d["usuario_pendiente"]=$nuevo; guardarMulticuentaEstado($state_file,$states,$chat_id,$d,"confirmando_multicuenta_nombre");
-    sendInlineMessage($chat_id,"⚠️ CONFIRMA EL USUARIO ".($indice+1)."\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario:\n".$nuevo."\n\nComprueba que está correctamente escrito.\n\n¿Es correcto?",multicuentaConfirmarNombreKeyboard());
-    http_response_code(200);exit;
-}
-
-if ($user_state === "referir_usuario") {
-    $nuevo=trim(preg_replace('/\s+/',' ',str_replace(["\r","\n","\t"],' ',$text)));
-    if($nuevo===""||substr($nuevo,0,1)==="/"){sendMessage($chat_id,"👤 Escribe el nombre de usuario del nuevo referido.");http_response_code(200);exit;}
-    $ex=consultarClienteApi($nuevo);if(!empty($ex["ok"])){sendMessage($chat_id,"⚠️ Ese usuario ya existe. Escribe otro nombre.");http_response_code(200);exit;}
-    $d=referirEstado($states,$chat_id);$d["usuario"]=$nuevo;guardarReferirEstado($state_file,$states,$chat_id,$d,"confirmando_referido_nombre");sendInlineMessage($chat_id,"⚠️ CONFIRMA EL NUEVO REFERIDO
-
-👤 Usuario:
-".$nuevo."
-
-¿Es correcto?",referirConfirmarKeyboard());http_response_code(200);exit;
-}
-
 if ($user_state === "nuevo_usuario") {
 
     $usuario_nuevo = trim($text);
@@ -4323,13 +3856,7 @@ Descargar aplicaciones.
 Agenda deportiva actualizada.
 
 🆕 /nuevo
-Crear una cuenta nueva individual.
-
-👥 /multicuenta
-Crear 1, 2 o 3 cuentas normales con un único pago.
-
-👥 /referir
-Añadir un nuevo referido a tu cuenta de Referente VIP.
+Crear una cuenta nueva.
 
 🆘 /soporte
 Contactar con soporte si tienes dudas o problemas.
@@ -4513,108 +4040,6 @@ case "/renovar":
 
     break;
    
-
-
-    case "/multicuenta":
-        limpiarMulticuentaEstado($state_file, $states, $chat_id);
-
-        /*
-         * Los paquetes Multicuenta son exclusivos para clientes normales.
-         * Si el usuario tiene vinculada una cuenta de Referido VIP o de
-         * Referente VIP, se bloquea el proceso y se le indican las opciones
-         * que sí le corresponden.
-         */
-        if ($saved_usuario !== "") {
-            $info_multicuenta = consultarClienteApi($saved_usuario);
-
-            if (!empty($info_multicuenta["ok"])) {
-                $es_referido_vip = !empty($info_multicuenta["referido"])
-                    || (($info_multicuenta["tipo"] ?? "") === "referido");
-
-                $es_referente_vip = !empty($info_multicuenta["cliente"])
-                    || (($info_multicuenta["tipo"] ?? "") === "referente");
-
-                if ($es_referido_vip || $es_referente_vip) {
-                    $tipo_cuenta_multicuenta = $es_referente_vip
-                        ? "Referente VIP"
-                        : "Referido VIP";
-
-                    sendMessage($chat_id, "⚠️ PLANES MULTICUENTA
-
-"
-                        ."Hemos detectado que tu cuenta vinculada pertenece a un ".$tipo_cuenta_multicuenta.".
-
-"
-                        ."Los planes Multicuenta son exclusivos para clientes normales y no son compatibles con las tarifas de Referidos VIP.
-
-"
-                        ."━━━━━━━━━━━━━━━━━━
-
-"
-                        ."👤 Cuenta vinculada:
-".$saved_usuario."
-
-"
-                        ."🔄 Para renovar una cuenta con su tarifa correspondiente, utiliza:
-/renovar
-
-"
-                        ."👥 Si eres Referente VIP y deseas añadir un nuevo referido, utiliza:
-/referir
-
-"
-                        ."━━━━━━━━━━━━━━━━━━
-
-"
-                        ."❌ No es posible contratar un plan Multicuenta desde esta cuenta.");
-                    break;
-                }
-            }
-        }
-
-        guardarMulticuentaEstado(
-            $state_file,
-            $states,
-            $chat_id,
-            ["usuarios" => [], "indice" => 0, "tipo_plan" => "cliente_normal"],
-            "multicuenta_cantidad"
-        );
-
-        sendInlineMessage(
-            $chat_id,
-            "👥 PLANES MULTICUENTA
-
-"
-            ."✅ Exclusivo para clientes normales.
-"
-            ."❌ No disponible para Referidos VIP ni Referentes VIP.
-
-"
-            ."Puedes crear 1, 2 o 3 cuentas con un único pago y enviar una sola captura del comprobante.
-
-"
-            ."¿Cuántas cuentas deseas contratar?",
-            multicuentaCantidadKeyboard()
-        );
-        break;
-
-    case "/referir":
-        if($saved_usuario===""){sendMessage($chat_id,"👥 Para añadir un referido, primero vincula tu cuenta de Referente VIP con /micuenta.");break;}
-        $info=consultarClienteApi($saved_usuario);
-        if(empty($info["ok"])||empty($info["cliente"])){sendMessage($chat_id,"❌ Esta opción es exclusiva para Referentes VIP. Tu cuenta vinculada no aparece como referente.");break;}
-        $nivel=renovarNivelKeyDesdeTexto($info["nivel"]["actual"]??""); if($nivel==="")$nivel="cobre";
-        guardarReferirEstado($state_file,$states,$chat_id,["referente_id"=>(int)$info["cliente"]["id"],"referente_nombre"=>$info["cliente"]["nombre"],"nivel"=>$nivel],"referir_usuario");
-        sendMessage($chat_id,"👥 AÑADIR NUEVO REFERIDO
-
-👤 Referente vinculado:
-".$info["cliente"]["nombre"]."
-
-🏆 Nivel actual:
-".renovarNivelTxt($nivel)."
-
-Escribe el nombre de usuario MDPRIME que tendrá tu nuevo referido.");
-        break;
-
     case "/nuevo":
 
         setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
