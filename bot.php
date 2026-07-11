@@ -512,12 +512,12 @@ function enviarAvisosCaducidadMdprime() {
 }
 
 
-function tecladoConvertirNormalAReferido() {
+function tecladoAdminConvertirNormalAReferido($cliente_chat_id) {
+    $cliente_chat_id = preg_replace('/[^0-9\-]/', '', (string)$cliente_chat_id);
     return [
         "inline_keyboard" => [
-            [["text" => "✅ Pasar esta cuenta a referido", "callback_data" => "referir_convertir_si"]],
-            [["text" => "✏️ Escribir otro usuario", "callback_data" => "referir_convertir_no"]],
-            [["text" => "❌ Cancelar", "callback_data" => "referir_convertir_cancelar"]]
+            [["text" => "✅ Aprobar conversión", "callback_data" => "adm_refconv_si_".$cliente_chat_id]],
+            [["text" => "❌ Rechazar solicitud", "callback_data" => "adm_refconv_no_".$cliente_chat_id]]
         ]
     ];
 }
@@ -3344,44 +3344,64 @@ if (isset($update["callback_query"])) {
         exit;
     }
 
-    if (in_array($callback_data, ["referir_convertir_si", "referir_convertir_no", "referir_convertir_cancelar"], true)) {
-        $ctx = $states[$chat_id]["referir_context"] ?? [];
-        $normalId = (int)($states[$chat_id]["referir_normal_id"] ?? 0);
-        $normalNombre = trim((string)($states[$chat_id]["referir_normal_nombre"] ?? ""));
-
-        if ($callback_data === "referir_convertir_cancelar") {
-            clearUserMode($state_file, $states, $chat_id);
-            editMessageText($chat_id, $message_id, "❌ Proceso cancelado.
-
-No se ha cambiado ninguna cuenta.");
+    if (strpos($callback_data, "adm_refconv_") === 0) {
+        if ((string)$chat_id !== (string)$admin_id) {
+            answerCallbackQuery($callback_id, "Acción exclusiva de administración.");
             http_response_code(200); exit;
         }
-        if ($callback_data === "referir_convertir_no") {
-            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
-            $states[$chat_id]["mode"] = "referir_usuario";
-            unset($states[$chat_id]["referir_normal_id"], $states[$chat_id]["referir_normal_nombre"]);
-            saveStates($state_file, $states);
-            editMessageText($chat_id, $message_id, "✏️ Escribe otro nombre diferente para la nueva cuenta MDPRIME.");
+
+        if (!preg_match('/^adm_refconv_(si|no)_(-?[0-9]+)$/', $callback_data, $m)) {
+            editMessageText($chat_id, $message_id, "❌ Solicitud no válida.");
             http_response_code(200); exit;
         }
+
+        $accion = $m[1];
+        $clienteChatId = (string)$m[2];
+        $clienteStates = loadStates($state_file);
+        $ctxCliente = $clienteStates[$clienteChatId] ?? [];
+        $ctx = $ctxCliente["referir_context"] ?? [];
+        $normalId = (int)($ctxCliente["referir_normal_id"] ?? 0);
+        $normalNombre = trim((string)($ctxCliente["referir_normal_nombre"] ?? ""));
+
         if ($normalId <= 0 || empty($ctx["referente_nombre"])) {
-            editMessageText($chat_id, $message_id, "⚠️ Se perdieron los datos del proceso. Pulsa /referir y comienza de nuevo.");
+            editMessageText($chat_id, $message_id, "⚠️ La solicitud ya no está disponible o perdió sus datos.");
             http_response_code(200); exit;
         }
-        $resultado = convertirClienteNormalAReferidoRailway($normalId,(int)($ctx["referente_id"]??0),(int)($ctx["referente_normal_id"]??0),(string)$chat_id);
+
+        if ($accion === "no") {
+            clearUserMode($state_file, $clienteStates, $clienteChatId);
+            editMessageText($chat_id, $message_id, "❌ SOLICITUD RECHAZADA
+
+👤 Usuario: ".$normalNombre."
+👥 Referente solicitado: ".($ctx["referente_nombre"] ?? "No disponible")."
+
+No se ha modificado ninguna cuenta.");
+            sendMessage($clienteChatId, "❌ El administrador no ha aprobado el cambio de tu cuenta normal a referido.
+
+No se ha modificado tu cuenta. Para cualquier duda, pulsa /soporte.");
+            http_response_code(200); exit;
+        }
+
+        $resultado = convertirClienteNormalAReferidoRailway(
+            $normalId,
+            (int)($ctx["referente_id"] ?? 0),
+            (int)($ctx["referente_normal_id"] ?? 0),
+            $clienteChatId
+        );
+
         if (empty($resultado["ok"])) {
-            editMessageText($chat_id, $message_id, "❌ No se pudo realizar el cambio.
+            editMessageText($chat_id, $message_id, "❌ No se pudo aprobar la conversión.
 
 Detalle:
-".($resultado["error"]??"Error desconocido")."
-
-Pulsa /soporte si necesitas ayuda.");
+".($resultado["error"] ?? "Error desconocido"));
             http_response_code(200); exit;
         }
-        $usuarioMovido=$resultado["usuario"]??$normalNombre;
-        $referenteNombre=$resultado["referente_nombre"]??($ctx["referente_nombre"]??"No disponible");
-        clearUserMode($state_file,$states,$chat_id);
-        editMessageText($chat_id,$message_id,"✅ CUENTA PASADA A REFERIDO
+
+        $usuarioMovido = $resultado["usuario"] ?? $normalNombre;
+        $referenteNombre = $resultado["referente_nombre"] ?? ($ctx["referente_nombre"] ?? "No disponible");
+        clearUserMode($state_file, $clienteStates, $clienteChatId);
+
+        editMessageText($chat_id, $message_id, "✅ CONVERSIÓN APROBADA
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -3392,20 +3412,22 @@ Pulsa /soporte si necesitas ayuda.");
 ".$referenteNombre."
 
 🟢 Estado:
-".($resultado["estado"]??"Activo")."
+".($resultado["estado"] ?? "Activo")."
 
 📅 Caducidad conservada:
-".(!empty($resultado["fecha_caducidad"])?date("d/m/Y",strtotime($resultado["fecha_caducidad"])):"Sin fecha")."
+".(!empty($resultado["fecha_caducidad"]) ? date("d/m/Y", strtotime($resultado["fecha_caducidad"])) : "Sin fecha")."
 
 ━━━━━━━━━━━━━━━━━━
 
-✅ Ya no aparece como cliente normal.
-✅ Ya aparece dentro de los referidos de ".$referenteNombre.".");
-        sendMessage($admin_id,"🔄 CLIENTE NORMAL PASADO A REFERIDO
+✅ Eliminado de clientes normales.
+✅ Añadido a los referidos de ".$referenteNombre.".");
 
-👤 Usuario: ".$usuarioMovido."
+        sendMessage($clienteChatId, "✅ El administrador ha aprobado el cambio.
+
+👤 Tu cuenta: ".$usuarioMovido."
 👥 Referente: ".$referenteNombre."
-🆔 Solicitado desde Chat ID: ".$chat_id,false);
+
+Tu cuenta ya aparece dentro de los referidos de ese referente.");
         http_response_code(200); exit;
     }
 
@@ -4255,23 +4277,20 @@ if ($user_state === "referir_usuario") {
         if (!empty($existe["cliente_normal"])) {
             if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
             $normal = $existe["cliente_normal"];
-            $states[$chat_id]["mode"] = "referir_convertir_normal_confirmar";
+            $states[$chat_id]["mode"] = "referir_conversion_pendiente_admin";
             $states[$chat_id]["referir_normal_id"] = (int)($normal["id"] ?? 0);
             $states[$chat_id]["referir_normal_nombre"] = $normal["nombre"] ?? $usuario_nuevo;
             saveStates($state_file, $states);
             $ctx = $states[$chat_id]["referir_context"] ?? [];
-            sendInlineMessage($chat_id,
-                "🔄 CUENTA NORMAL ENCONTRADA
+
+            sendMessage($chat_id, "⏳ SOLICITUD ENVIADA AL ADMINISTRADOR
 
 ━━━━━━━━━━━━━━━━━━
 
-👤 Usuario:
+👤 Cuenta normal:
 ".($normal["nombre"] ?? $usuario_nuevo)."
 
-💳 Situación actual:
-Cliente normal / no referido
-
-👥 Nuevo referente:
+👥 Referente solicitado:
 ".($ctx["referente_nombre"] ?? "No disponible")."
 
 📅 Caducidad actual:
@@ -4279,14 +4298,39 @@ Cliente normal / no referido
 
 ━━━━━━━━━━━━━━━━━━
 
-Esta cuenta ya existe, pero puedes pasarla al grupo de referidos del referente indicado.
+La conversión solo puede aprobarla la administración.
 
-✅ Se conservarán su estado y su fecha de caducidad.
-✅ Dejará de aparecer como cliente normal.
-✅ Aparecerá dentro de /misreferidos del referente.
+No se realizará ningún cambio hasta que el administrador la acepte.");
 
-¿Quieres realizar el cambio?",
-                tecladoConvertirNormalAReferido());
+            $nombreTelegram = trim(($from["first_name"] ?? "")." ".($from["last_name"] ?? ""));
+            $aliasTelegram = $from["username"] ?? "";
+            sendInlineMessage($admin_id,
+                "🔔 SOLICITUD DE CONVERSIÓN
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Cliente normal:
+".($normal["nombre"] ?? $usuario_nuevo)."
+
+👥 Referente solicitado:
+".($ctx["referente_nombre"] ?? "No disponible")."
+
+📅 Caducidad actual:
+".($normal["caducidad"] ?? "Sin fecha")."
+
+👤 Solicitante Telegram:
+".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."
+
+📲 Alias:
+".($aliasTelegram !== "" ? "@".$aliasTelegram : "No disponible")."
+
+🆔 Chat ID:
+".$chat_id."
+
+━━━━━━━━━━━━━━━━━━
+
+Solo al aprobar se eliminará de clientes normales y se añadirá a los referidos del referente indicado.",
+                tecladoAdminConvertirNormalAReferido($chat_id));
             http_response_code(200); exit;
         }
         sendMessage($chat_id, "⚠️ Ese usuario ya existe como referente o como referido.
