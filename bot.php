@@ -1063,26 +1063,19 @@ function buscarReferenteParaAlta($entrada) {
             return $enReferentes;
         }
 
-        // 2) Si todavía no es referente, buscarlo en clientes normales.
-        // No se mueve todavía: se convertirá únicamente cuando el administrador apruebe el pago.
-        $rowsNormales = $pdo->query("SELECT id, nombre, telegram, contacto, telefono, fecha_alta, fecha_caducidad, estado, nota FROM clientes_normales ORDER BY id ASC")->fetchAll();
+        // 2) Comprobar si el dato pertenece a un cliente normal.
+        // Un cliente normal NO puede utilizarse como referente hasta que administración
+        // lo convierta previamente en Referente VIP dentro del panel.
+        $rowsNormales = $pdo->query("SELECT id, nombre, telegram, contacto, telefono FROM clientes_normales ORDER BY id ASC")->fetchAll();
         $enNormales = $buscarEnFilas($rowsNormales);
 
         if (!empty($enNormales["ok"])) {
             $normal = $enNormales["row"];
             return [
-                "ok" => true,
-                "origen" => "clientes_normales",
-                "convertir_a_referente" => true,
-                "referente" => [
-                    "id" => 0,
-                    "normal_id" => (int)$normal["id"],
-                    "nombre" => $normal["nombre"] ?? "Sin nombre",
-                    "telegram" => $normal["telegram"] ?? "",
-                    "contacto" => $normal["contacto"] ?? ""
-                ],
-                "nivel" => "cobre",
-                "activos" => 0
+                "ok" => false,
+                "tipo_error" => "cliente_normal_no_referente",
+                "nombre_encontrado" => $normal["nombre"] ?? $entrada,
+                "error" => "Ese usuario existe en el panel, pero actualmente es un cliente normal y no está registrado como Referente VIP."
             ];
         }
 
@@ -4497,8 +4490,12 @@ if ($user_state === "referir_referente") {
 
     $infoRef = buscarReferenteParaAlta($nombre_referente);
 
-    if (empty($infoRef["ok"]) || (empty($infoRef["referente"]["id"]) && empty($infoRef["referente"]["normal_id"]))) {
-        sendMessage($chat_id, "❌ No encuentro ese referente.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nDetalle:\n".($infoRef["error"] ?? "No encontrado")."\n\nPuedes escribir su nombre del panel, su usuario de Telegram o su contacto.\n\nVuelve a escribirlo o pulsa /soporte.");
+    if (empty($infoRef["ok"]) || empty($infoRef["referente"]["id"])) {
+        if (($infoRef["tipo_error"] ?? "") === "cliente_normal_no_referente") {
+            sendMessage($chat_id, "⚠️ ESTE USUARIO NO ES REFERENTE\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario encontrado:\n".($infoRef["nombre_encontrado"] ?? $nombre_referente)."\n\nEste usuario aparece en el panel como cliente normal, pero no está dado de alta como Referente VIP.\n\nPor tanto, no puede recibir nuevos referidos.\n\nDebe contactar con administración para que lo convierta primero en referente.\n\nEscribe otro referente válido o pulsa /soporte.");
+        } else {
+            sendMessage($chat_id, "❌ No encuentro ese referente.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nDetalle:\n".($infoRef["error"] ?? "No encontrado")."\n\nPuedes escribir su nombre del panel, su usuario de Telegram o su contacto.\n\nVuelve a escribirlo o pulsa /soporte.");
+        }
         http_response_code(200);
         exit;
     }
