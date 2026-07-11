@@ -161,6 +161,9 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
                     ["text" => "/referir"]
                 ],
                 [
+                    ["text" => "/multicuenta"]
+                ],
+                [
                     ["text" => "/soporte"],
                     ["text" => "/cambiarusuario"]
                 ]
@@ -2717,6 +2720,138 @@ Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo ant
 
 
 
+
+/* =========================
+   PLAN MULTICUENTA (2 O 3 USUARIOS)
+========================= */
+function multiPrecio($cantidad, $meses) {
+    $precios = [
+        2 => [3 => 55, 6 => 85, 12 => 120],
+        3 => [3 => 80, 6 => 125, 12 => 165]
+    ];
+    return $precios[(int)$cantidad][(int)$meses] ?? 0;
+}
+
+function multiCantidadKeyboard() {
+    return ["inline_keyboard" => [
+        [["text" => "👥 2 usuarios", "callback_data" => "multi_qty_2"]],
+        [["text" => "👨‍👩‍👦 3 usuarios", "callback_data" => "multi_qty_3"]],
+        [["text" => "❌ Cancelar", "callback_data" => "multi_cancel"]]
+    ]];
+}
+
+function multiDuracionKeyboard($cantidad) {
+    return ["inline_keyboard" => [
+        [["text" => "📦 3 meses · ".multiPrecio($cantidad,3)."€", "callback_data" => "multi_dur_3"]],
+        [["text" => "📦 6 meses · ".multiPrecio($cantidad,6)."€", "callback_data" => "multi_dur_6"]],
+        [["text" => "📦 12 meses · ".multiPrecio($cantidad,12)."€", "callback_data" => "multi_dur_12"]],
+        [["text" => "❌ Cancelar", "callback_data" => "multi_cancel"]]
+    ]];
+}
+
+function multiConfirmarNombreKeyboard() {
+    return ["inline_keyboard" => [
+        [["text" => "✅ Sí, continuar", "callback_data" => "multi_name_ok"]],
+        [["text" => "✏️ No, escribir de nuevo", "callback_data" => "multi_name_no"]],
+        [["text" => "❌ Cancelar", "callback_data" => "multi_cancel"]]
+    ]];
+}
+
+function multiResumenKeyboard($cantidad) {
+    $rows = [[
+        ["text" => "✅ Confirmar y pagar", "callback_data" => "multi_pay"]
+    ]];
+    for ($i=0; $i<(int)$cantidad; $i++) {
+        $rows[] = [["text" => "✏️ Cambiar usuario ".($i+1), "callback_data" => "multi_edit_".$i]];
+    }
+    $rows[] = [["text" => "❌ Cancelar", "callback_data" => "multi_cancel"]];
+    return ["inline_keyboard" => $rows];
+}
+
+function multiGuardarEstado($file, &$states, $chat_id, $data, $mode) {
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+    $states[$chat_id]["mode"] = $mode;
+    $states[$chat_id]["multi_data"] = $data;
+    saveStates($file, $states);
+}
+
+function multiEstado($states, $chat_id) {
+    return (isset($states[$chat_id]) && is_array($states[$chat_id])) ? ($states[$chat_id]["multi_data"] ?? []) : [];
+}
+
+function multiLimpiarEstado($file, &$states, $chat_id) {
+    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
+        unset($states[$chat_id]["mode"], $states[$chat_id]["multi_data"], $states[$chat_id]["multi_comprobante"]);
+        if (empty($states[$chat_id])) unset($states[$chat_id]);
+    }
+    saveStates($file, $states);
+}
+
+function multiUsuarioExiste($usuario) {
+    $d = consultarClienteApi($usuario);
+    return !empty($d["ok"]);
+}
+
+function multiNombreReservado($states, $usuario, $chat_id_actual = "") {
+    $n = mdprimeNormalizarBusqueda($usuario);
+    foreach (($states["_multicuentas_pendientes"] ?? []) as $p) {
+        foreach (($p["usuarios"] ?? []) as $u) {
+            if (mdprimeNormalizarBusqueda($u) === $n) return true;
+        }
+    }
+    foreach ($states as $cid => $st) {
+        if ((string)$cid === (string)$chat_id_actual || !is_array($st)) continue;
+        foreach (($st["multi_data"]["usuarios"] ?? []) as $u) {
+            if (mdprimeNormalizarBusqueda($u) === $n) return true;
+        }
+    }
+    return false;
+}
+
+function multiResumenTexto($data) {
+    $cantidad=(int)($data["cantidad"]??0); $meses=(int)($data["meses"]??0);
+    $txt="💎 RESUMEN PLAN MULTICUENTA\n\n━━━━━━━━━━━━━━━━━━\n\n👥 Usuarios:\n".$cantidad."\n\n📦 Duración:\n".$meses." meses\n";
+    foreach (($data["usuarios"]??[]) as $i=>$u) $txt.="\n".($i+1)."️⃣ ".$u."\n";
+    $txt.="\n💶 Total:\n".multiPrecio($cantidad,$meses)."€\n\n━━━━━━━━━━━━━━━━━━\n\nComprueba los nombres antes de continuar.";
+    return $txt;
+}
+
+function multiMensajePago($data) {
+    global $payment_link;
+    return multiResumenTexto($data)."\n\n🔗 Enlace de pago:\n".$payment_link."\n\n📸 Realiza un único pago y envía aquí una sola captura del comprobante.\n\n⚠️ Las cuentas no se crearán hasta que administración apruebe el pago.";
+}
+
+function multiGuardarPendiente($file, &$states, $id, $data) {
+    if (!isset($states["_multicuentas_pendientes"]) || !is_array($states["_multicuentas_pendientes"])) $states["_multicuentas_pendientes"]=[];
+    $data["multi_id"]=$id; $data["creado_en"]=date("Y-m-d H:i:s");
+    $states["_multicuentas_pendientes"][$id]=$data; saveStates($file,$states);
+}
+function multiObtenerPendiente($states,$id){ return $states["_multicuentas_pendientes"][$id]??null; }
+function multiBorrarPendiente($file,&$states,$id){ unset($states["_multicuentas_pendientes"][$id]); if(empty($states["_multicuentas_pendientes"]))unset($states["_multicuentas_pendientes"]); saveStates($file,$states); }
+function multiAdminKeyboard($id){ return ["inline_keyboard"=>[
+    [["text"=>"✅ Aprobar todas","callback_data"=>"adm_multi_ok_".$id]],
+    [["text"=>"💬 Abrir chat","callback_data"=>"adm_multi_chat_".$id]],
+    [["text"=>"❌ Rechazar","callback_data"=>"adm_multi_no_".$id]]
+]]; }
+
+function multiAdminTexto($data) {
+    $from=$data["telegram_from"]??[]; $nom=trim(($from["first_name"]??"")." ".($from["last_name"]??"")); $alias=$from["username"]??"";
+    $txt="💎 NUEVO PAGO MULTICUENTA\n\n━━━━━━━━━━━━━━━━━━\n\n👥 Plan: ".($data["cantidad"]??0)." usuarios\n📦 Duración: ".($data["meses"]??0)." meses\n💶 Importe: ".multiPrecio($data["cantidad"]??0,$data["meses"]??0)."€\n";
+    foreach(($data["usuarios"]??[]) as $i=>$u)$txt.="\n".($i+1)."️⃣ ".$u;
+    $txt.="\n\n👤 Telegram: ".($nom!==""?$nom:"No disponible")."\n📲 Alias: ".($alias!==""?"@".$alias:"No disponible")."\n🆔 Chat ID: ".($data["chat_id_cliente"]??"")."\n\n✅ Un solo comprobante para todas las cuentas.";
+    return $txt;
+}
+
+function multiAplicarAltas($data) {
+    $usuarios=$data["usuarios"]??[]; $meses=(int)($data["meses"]??0); $from=$data["telegram_from"]??[]; $chat=$data["chat_id_cliente"]??"";
+    $ok=[]; $errores=[];
+    foreach($usuarios as $u){
+        $r=aplicarNuevaCuentaRailway($u,$meses,$from,$chat);
+        if(!empty($r["ok"]))$ok[]=$r; else $errores[]=["usuario"=>$u,"error"=>$r["error"]??"Error desconocido"];
+    }
+    return ["ok"=>count($ok)>0,"creadas"=>$ok,"errores"=>$errores];
+}
+
 /* =========================
    NUEVA CUENTA MDPRIME
 ========================= */
@@ -3322,6 +3457,71 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+
+
+    if (strpos($callback_data, "adm_multi_") === 0) {
+        if ((string)$chat_id !== (string)$admin_id) { answerCallbackQuery($callback_id,"No autorizado."); http_response_code(200); exit; }
+        if (!preg_match('/^adm_multi_(ok|no|chat)_(.+)$/',$callback_data,$mm)) { http_response_code(200); exit; }
+        $accion=$mm[1]; $id=$mm[2]; $p=multiObtenerPendiente($states,$id);
+        if(!$p){ editMessageText($chat_id,$message_id,"ℹ️ Este pedido ya fue gestionado o no existe."); http_response_code(200); exit; }
+        $cliente=$p["chat_id_cliente"]??"";
+        if($accion==="chat"){
+            $fr=$p["telegram_from"]??[]; $al=$fr["username"]??"";
+            sendMessage($chat_id,"💬 DATOS DEL CLIENTE\n\nAlias: ".($al!==""?"@".$al:"No disponible")."\nChat ID: ".$cliente."\n\n/reply ".$cliente." Hola, sobre tu plan multicuenta: ");
+            http_response_code(200); exit;
+        }
+        if($accion==="no"){
+            multiBorrarPendiente($state_file,$states,$id);
+            editMessageText($chat_id,$message_id,"❌ PLAN MULTICUENTA RECHAZADO\n\nNo se ha creado ninguna cuenta.");
+            if($cliente!=="")sendMessage($cliente,"❌ No hemos podido validar el pago del plan multicuenta. No se ha creado ninguna cuenta. Pulsa /soporte si necesitas ayuda.");
+            http_response_code(200); exit;
+        }
+        $res=multiAplicarAltas($p);
+        if(empty($res["ok"])){
+            $err=[]; foreach(($res["errores"]??[]) as $e)$err[]=$e["usuario"].": ".$e["error"];
+            editMessageText($chat_id,$message_id,"❌ NO SE PUDO CREAR NINGUNA CUENTA\n\n".implode("\n",$err)."\n\nLa solicitud sigue pendiente.");
+            http_response_code(200); exit;
+        }
+        multiBorrarPendiente($state_file,$states,$id);
+        $creadas=[]; foreach(($res["creadas"]??[]) as $r)$creadas[]="✅ ".$r["usuario"]." · caduca ".fechaBonita($r["nueva_caducidad"]??"");
+        $errs=[]; foreach(($res["errores"]??[]) as $e)$errs[]="❌ ".$e["usuario"]." · ".$e["error"];
+        $texto="✅ PLAN MULTICUENTA APROBADO\n\n".implode("\n",$creadas).(empty($errs)?"":"\n\nINCIDENCIAS:\n".implode("\n",$errs));
+        editMessageText($chat_id,$message_id,$texto);
+        if($cliente!=="")sendMessage($cliente,$texto."\n\n⭐ Gracias por confiar en MDPRIME.");
+        http_response_code(200); exit;
+    }
+
+    if (strpos($callback_data, "multi_") === 0) {
+        $md=multiEstado($states,$chat_id);
+        if($callback_data==="multi_cancel"){ multiLimpiarEstado($state_file,$states,$chat_id); editMessageText($chat_id,$message_id,"❌ Plan multicuenta cancelado."); http_response_code(200); exit; }
+        if(strpos($callback_data,"multi_qty_")===0){
+            $q=(int)str_replace("multi_qty_","",$callback_data); if(!in_array($q,[2,3],true)){http_response_code(200);exit;}
+            $md=["cantidad"=>$q,"usuarios"=>[]]; multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_duracion");
+            editMessageText($chat_id,$message_id,"💎 PLAN MULTICUENTA\n\nHas elegido ".$q." usuarios.\n\nSelecciona la duración:",multiDuracionKeyboard($q)); http_response_code(200); exit;
+        }
+        if(strpos($callback_data,"multi_dur_")===0 && !empty($md["cantidad"])){
+            $m=(int)str_replace("multi_dur_","",$callback_data); if(!in_array($m,[3,6,12],true)){http_response_code(200);exit;}
+            $md["meses"]=$m; $md["usuarios"]=[]; multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre");
+            editMessageText($chat_id,$message_id,"👤 PASO 1 DE ".$md["cantidad"]."\n\nEscribe el nombre de la primera cuenta nueva."); http_response_code(200); exit;
+        }
+        if($callback_data==="multi_name_no" && !empty($md)){
+            unset($md["nombre_pendiente"]); multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre");
+            editMessageText($chat_id,$message_id,"✏️ Escribe de nuevo el nombre de esta cuenta."); http_response_code(200); exit;
+        }
+        if($callback_data==="multi_name_ok" && !empty($md["nombre_pendiente"])){
+            $u=$md["nombre_pendiente"]; unset($md["nombre_pendiente"]); $idx=$md["edit_index"]??null;
+            if($idx!==null){ $md["usuarios"][(int)$idx]=$u; unset($md["edit_index"]); multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_resumen"); editMessageText($chat_id,$message_id,multiResumenTexto($md),multiResumenKeyboard($md["cantidad"])); }
+            else { $md["usuarios"][]=$u; if(count($md["usuarios"])<(int)$md["cantidad"]){ multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre"); editMessageText($chat_id,$message_id,"✅ Nombre guardado: ".$u."\n\n👤 PASO ".(count($md["usuarios"])+1)." DE ".$md["cantidad"]."\n\nEscribe el nombre de la siguiente cuenta."); } else { multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_resumen"); editMessageText($chat_id,$message_id,multiResumenTexto($md),multiResumenKeyboard($md["cantidad"])); } }
+            http_response_code(200); exit;
+        }
+        if(strpos($callback_data,"multi_edit_")===0 && !empty($md)){
+            $i=(int)str_replace("multi_edit_","",$callback_data); if(!isset($md["usuarios"][$i])){http_response_code(200);exit;}
+            $md["edit_index"]=$i; multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre"); editMessageText($chat_id,$message_id,"✏️ Escribe el nuevo nombre para el usuario ".($i+1).".\n\nNombre actual: ".$md["usuarios"][$i]); http_response_code(200); exit;
+        }
+        if($callback_data==="multi_pay" && count($md["usuarios"]??[])===(int)($md["cantidad"]??0)){
+            multiGuardarEstado($state_file,$states,$chat_id,$md,"esperando_comprobante_multi"); editMessageText($chat_id,$message_id,multiMensajePago($md)); http_response_code(200); exit;
+        }
+    }
 
     if (strpos($callback_data, "sup_") === 0) {
         if ($callback_data === "sup_menu") {
@@ -3951,6 +4151,22 @@ $message_id = $update["message"]["message_id"] ?? null;
 $states = loadStates($state_file);
 $user_state = getUserMode($states, $chat_id);
 
+
+// Comprobante único del plan multicuenta.
+if ($user_state === "esperando_comprobante_multi") {
+    $tiene = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
+    if ($tiene && $message_id) {
+        $md=multiEstado($states,$chat_id); $from_user=$update["message"]["from"]??[]; $id=uniqid("m");
+        $md["chat_id_cliente"]=$chat_id; $md["telegram_from"]=$from_user;
+        multiGuardarPendiente($state_file,$states,$id,$md);
+        sendInlineMessage($admin_id,multiAdminTexto($md)."\n\n📸 Comprobante recibido debajo.",multiAdminKeyboard($id));
+        forwardMessage($admin_id,$chat_id,$message_id); multiLimpiarEstado($state_file,$states,$chat_id);
+        sendMessage($chat_id,"✅ Comprobante único recibido. El plan multicuenta queda pendiente de revisión administrativa.");
+        http_response_code(200); exit;
+    }
+    if($text!=="" && substr($text,0,1)!=="/"){ sendMessage($chat_id,"📸 Envía una captura o documento del comprobante único. Para cancelar, pulsa /start."); http_response_code(200); exit; }
+}
+
 // Si estamos esperando el comprobante de alta nueva, aceptar captura/foto/documento.
 if ($user_state === "esperando_comprobante_nuevo") {
     $tiene_comprobante = isset($update["message"]["photo"]) || isset($update["message"]["document"]);
@@ -4344,6 +4560,19 @@ Escribe otro nombre diferente.");
     http_response_code(200); exit;
 }
 
+
+if ($user_state === "multi_nombre") {
+    $u=trim($text); $u=preg_replace('/\s+/',' ',str_replace(["\r","\n","\t"]," ",$u));
+    if($u==="" || substr($u,0,1)==="/"){ sendMessage($chat_id,"👤 Escribe un nombre válido para la cuenta."); http_response_code(200); exit; }
+    $md=multiEstado($states,$chat_id); $norm=mdprimeNormalizarBusqueda($u);
+    foreach(($md["usuarios"]??[]) as $i=>$ya){ if(isset($md["edit_index"]) && (int)$md["edit_index"]===$i)continue; if(mdprimeNormalizarBusqueda($ya)===$norm){ sendMessage($chat_id,"⚠️ Ese nombre ya está incluido en este mismo pedido. Escribe otro diferente."); http_response_code(200); exit; } }
+    if(multiUsuarioExiste($u)){ sendMessage($chat_id,"⚠️ Ese usuario ya existe en el panel. Para esa cuenta debes usar /renovar.\n\nEscribe otro nombre para este plan multicuenta."); http_response_code(200); exit; }
+    if(multiNombreReservado($states,$u,$chat_id)){ sendMessage($chat_id,"⚠️ Ese nombre ya está reservado en otra solicitud pendiente. Escribe otro diferente."); http_response_code(200); exit; }
+    $md["nombre_pendiente"]=$u; multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_confirmando_nombre");
+    sendInlineMessage($chat_id,"⚠️ CONFIRMA EL NOMBRE\n\n👤 ".$u."\n\n¿Está escrito correctamente?",multiConfirmarNombreKeyboard());
+    http_response_code(200); exit;
+}
+
 if ($user_state === "nuevo_usuario") {
 
     $usuario_nuevo = trim($text);
@@ -4486,6 +4715,9 @@ Crear una cuenta nueva normal.
 
 👥 /referir
 Crear una cuenta nueva y unirla al grupo de tu referente.
+
+💎 /multicuenta
+Contratar 2 o 3 cuentas con un único pago.
 
 🆘 /soporte
 Contactar con soporte si tienes dudas o problemas.
@@ -4669,6 +4901,22 @@ case "/renovar":
 
     break;
    
+
+    case "/multicuenta":
+        clearUserMode($state_file,$states,$chat_id);
+        multiGuardarEstado($state_file,$states,$chat_id,[],"multi_cantidad");
+        sendInlineMessage($chat_id,"💎 PLAN MULTICUENTA\n\nContrata 2 o 3 cuentas nuevas con un único pago y un único comprobante.\n\nEste paquete es para clientes normales y no aplica precios de referidos.\n\n¿Cuántos usuarios quieres contratar?",multiCantidadKeyboard());
+        break;
+
+    case "/multicuentas":
+        if((string)$chat_id!==(string)$admin_id){ sendMessage($chat_id,"❌ Comando reservado para administración."); break; }
+        $pend=$states["_multicuentas_pendientes"]??[];
+        if(empty($pend)){ sendMessage($chat_id,"📋 No hay planes multicuenta pendientes."); break; }
+        $txt="📋 MULTICUENTAS PENDIENTES\n";
+        foreach($pend as $id=>$p){ $txt.="\n━━━━━━━━━━━━━━━━━━\n#".$id."\n👥 ".($p["cantidad"]??0)." usuarios · ".($p["meses"]??0)." meses\n💶 ".multiPrecio($p["cantidad"]??0,$p["meses"]??0)."€\n👤 ".implode(", ",$p["usuarios"]??[]); }
+        sendLongMessage($chat_id,$txt,false);
+        break;
+
     case "/referir":
         clearUserMode($state_file, $states, $chat_id);
         setUserMode($state_file, $states, $chat_id, "referir_referente");
