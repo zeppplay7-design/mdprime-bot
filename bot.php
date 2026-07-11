@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V50-REFERIR-AUTOVINCULADO-20260711";
+$bot_version = "MDPRIME-BOT-V60-PANEL-REFERENTE-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1923,6 +1923,17 @@ O cambia el usuario con:
         return;
     }
 
+    if (($data["tipo"] ?? "") === "referente") {
+        if ($tipo === "/misreferidos") {
+            [$txt,$kb] = listaReferidosV60($data, 0, false);
+            sendInlineMessage($chat_id, $txt, $kb);
+            return;
+        }
+        sendLongMessage($chat_id, formatMiCuenta($data));
+        sendInlineMessage($chat_id, "👑 Accede a tu panel de referente:", tecladoPanelReferenteV60());
+        return;
+    }
+
     if ($tipo === "/misreferidos") {
         sendLongMessage($chat_id, formatMisReferidos($data));
         return;
@@ -3521,6 +3532,123 @@ function soporteTextoDispositivos() {
 Estos dispositivos no pueden instalar archivos APK de Android de forma directa.";
 }
 
+
+
+/* =========================
+   V60 PANEL INTERACTIVO REFERENTE
+========================= */
+function tecladoPanelReferenteV60() {
+    return ["inline_keyboard" => [
+        [["text" => "👤 Mi cuenta", "callback_data" => "refpanel_cuenta"], ["text" => "👥 Mis referidos", "callback_data" => "refpanel_lista_0"]],
+        [["text" => "📊 Estadísticas", "callback_data" => "refpanel_stats"], ["text" => "💶 Mis tarifas", "callback_data" => "refpanel_tarifas"]],
+        [["text" => "➕ Añadir referido", "callback_data" => "refpanel_anadir"], ["text" => "🔄 Renovar referido", "callback_data" => "refpanel_renovar_0"]],
+        [["text" => "🏠 Inicio", "callback_data" => "refpanel_inicio"]]
+    ]];
+}
+
+function tecladoVolverPanelReferenteV60($extra = []) {
+    $rows = $extra;
+    $rows[] = [["text" => "⬅️ Volver al panel", "callback_data" => "refpanel_inicio"]];
+    return ["inline_keyboard" => $rows];
+}
+
+function datosReferenteV60($usuario) {
+    $data = consultarClienteApi($usuario);
+    if (empty($data["ok"]) || ($data["tipo"] ?? "") !== "referente") {
+        return null;
+    }
+    return $data;
+}
+
+function textoPanelReferenteV60($data) {
+    $c = $data["cliente"] ?? [];
+    $r = $data["resumen"] ?? [];
+    $n = $data["nivel"] ?? [];
+    return "👑 PANEL REFERENTE MDPRIME
+
+".
+        "🙋 Referente: ".($c["nombre"] ?? "Sin nombre")."
+".
+        nivelIcono($n["actual"] ?? "")." Nivel: ".($n["actual"] ?? "SIN NIVEL")."
+".
+        "👥 Referidos: ".($r["total_referidos"] ?? 0)."
+".
+        "🟢 Activos: ".($r["activos"] ?? 0)." · 🔴 Inactivos: ".($r["inactivos"] ?? 0)."
+
+".
+        "Selecciona una opción:";
+}
+
+function mostrarPanelReferenteV60($chat_id, $usuario, $editar_id = null) {
+    $data = datosReferenteV60($usuario);
+    if (!$data) {
+        $txt = "⚠️ Esta cuenta no está registrada como Referente VIP.";
+        if ($editar_id) editMessageText($chat_id, $editar_id, $txt);
+        else sendMessage($chat_id, $txt);
+        return false;
+    }
+    $txt = textoPanelReferenteV60($data);
+    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelReferenteV60());
+    else sendInlineMessage($chat_id, $txt, tecladoPanelReferenteV60());
+    return true;
+}
+
+function listaReferidosV60($data, $pagina = 0, $modoRenovar = false) {
+    $todos = $data["referidos"] ?? [];
+    $porPagina = 8;
+    $totalPaginas = max(1, (int)ceil(count($todos) / $porPagina));
+    $pagina = max(0, min((int)$pagina, $totalPaginas - 1));
+    $items = array_slice($todos, $pagina * $porPagina, $porPagina);
+    $rows = [];
+    foreach ($items as $ref) {
+        $id = (int)($ref["id"] ?? 0);
+        $icono = estadoIcono($ref["estado"] ?? "Inactivo");
+        $pref = $modoRenovar ? "refpanel_renficha_" : "refpanel_ficha_";
+        $rows[] = [["text" => $icono." ".($ref["nombre"] ?? "Sin nombre"), "callback_data" => $pref.$id."_".$pagina]];
+    }
+    $nav = [];
+    $prefPag = $modoRenovar ? "refpanel_renovar_" : "refpanel_lista_";
+    if ($pagina > 0) $nav[] = ["text" => "⬅️", "callback_data" => $prefPag.($pagina-1)];
+    $nav[] = ["text" => "Página ".($pagina+1)."/".$totalPaginas, "callback_data" => "refpanel_nada"];
+    if ($pagina < $totalPaginas-1) $nav[] = ["text" => "➡️", "callback_data" => $prefPag.($pagina+1)];
+    if ($nav) $rows[] = $nav;
+    $rows[] = [["text" => "⬅️ Volver al panel", "callback_data" => "refpanel_inicio"]];
+    $titulo = $modoRenovar ? "🔄 SELECCIONA EL REFERIDO A RENOVAR" : "👥 MIS REFERIDOS";
+    $texto = $titulo."
+
+🙋 Referente: ".($data["cliente"]["nombre"] ?? "")."
+".
+             "👥 Total: ".count($todos)." · 🟢 ".($data["resumen"]["activos"] ?? 0)." · 🔴 ".($data["resumen"]["inactivos"] ?? 0);
+    if (!$items) $texto .= "
+
+No tienes referidos registrados.";
+    return [$texto, ["inline_keyboard" => $rows]];
+}
+
+function buscarFichaReferidoV60($data, $referido_id) {
+    foreach (($data["referidos"] ?? []) as $ref) {
+        if ((int)($ref["id"] ?? 0) === (int)$referido_id) return $ref;
+    }
+    return null;
+}
+
+function textoFichaReferidoV60($ref) {
+    return "👤 FICHA DEL REFERIDO
+
+".
+        "🙋 Usuario: ".($ref["nombre"] ?? "Sin nombre")."
+".
+        estadoIcono($ref["estado"] ?? "Inactivo")." Estado: ".($ref["estado"] ?? "Sin estado")."
+".
+        "📅 Alta: ".($ref["fecha_alta"] ?? "Sin fecha")."
+".
+        "📅 Caducidad: ".($ref["caducidad"] ?? "Sin fecha")."
+".
+        "⏳ ".fmtDias($ref["dias"] ?? null).
+        (!empty($ref["nota"]) ? "
+📝 ".$ref["nota"] : "");
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -3555,6 +3683,84 @@ if (isset($update["callback_query"])) {
 
     $states = loadStates($state_file);
 
+    if (strpos($callback_data, "refpanel_") === 0) {
+        $usuario = getSavedUsuario($states, $chat_id);
+        if ($usuario === "") {
+            editMessageText($chat_id, $message_id, "⚠️ Primero vincula tu usuario con /micuenta.");
+            http_response_code(200); exit;
+        }
+        $dataRef = datosReferenteV60($usuario);
+        if (!$dataRef) {
+            editMessageText($chat_id, $message_id, "⚠️ La cuenta vinculada no es un Referente VIP.");
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "refpanel_nada") { http_response_code(200); exit; }
+        if ($callback_data === "refpanel_inicio") {
+            mostrarPanelReferenteV60($chat_id, $usuario, $message_id);
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "refpanel_cuenta") {
+            editMessageText($chat_id, $message_id, formatMiCuenta($dataRef), tecladoVolverPanelReferenteV60());
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "refpanel_stats") {
+            $r=$dataRef["resumen"]??[]; $n=$dataRef["nivel"]??[]; $sig=$dataRef["siguiente_nivel"]??null;
+            $txt="📊 ESTADÍSTICAS
+
+👥 Total: ".($r["total_referidos"]??0)."
+🟢 Activos: ".($r["activos"]??0)."
+🔴 Inactivos: ".($r["inactivos"]??0)."
+".nivelIcono($n["actual"]??"")." Nivel: ".($n["actual"]??"SIN NIVEL")."
+📅 Próxima caducidad: ".($r["proxima_caducidad"]??"Sin fecha");
+            if ($sig) $txt.="
+🎯 Faltan ".($sig["faltan"]??0)." activos para ".($sig["nivel"]??"").".";
+            editMessageText($chat_id,$message_id,$txt,tecladoVolverPanelReferenteV60());
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "refpanel_tarifas") {
+            $n=$dataRef["nivel"]??[];
+            $txt="💶 MIS TARIFAS
+
+".nivelIcono($n["actual"]??"")." Nivel: ".($n["actual"]??"SIN NIVEL")."
+
+3 meses → ".($n["precio_3_meses"]??0)."€
+6 meses → ".($n["precio_6_meses"]??0)."€
+12 meses → ".($n["precio_12_meses"]??0)."€";
+            editMessageText($chat_id,$message_id,$txt,tecladoVolverPanelReferenteV60());
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "refpanel_anadir") {
+            setUserMode($state_file, $states, $chat_id, "referir_usuario");
+            editMessageText($chat_id,$message_id,"➕ AÑADIR REFERIDO
+
+Escribe el usuario MDPRIME que deseas unir a tu cuenta de referente.
+
+Para cancelar: /cancelar");
+            http_response_code(200); exit;
+        }
+        if (preg_match('/^refpanel_(lista|renovar)_(\d+)$/',$callback_data,$m)) {
+            [$txt,$kb]=listaReferidosV60($dataRef,(int)$m[2],$m[1]==="renovar");
+            editMessageText($chat_id,$message_id,$txt,$kb);
+            http_response_code(200); exit;
+        }
+        if (preg_match('/^refpanel_(ficha|renficha)_(\d+)_(\d+)$/',$callback_data,$m)) {
+            $ref=buscarFichaReferidoV60($dataRef,(int)$m[2]);
+            if(!$ref){ editMessageText($chat_id,$message_id,"⚠️ Referido no encontrado.",tecladoVolverPanelReferenteV60()); http_response_code(200); exit; }
+            $pag=(int)$m[3];
+            $rows=[];
+            $rows[]=[["text"=>"🔄 Renovar este referido","callback_data"=>"refpanel_renovarid_".(int)$ref["id"]]];
+            $rows[]=[["text"=>"⬅️ Volver a la lista","callback_data"=>(($m[1]==="renficha")?"refpanel_renovar_":"refpanel_lista_").$pag]];
+            $rows[]=[["text"=>"🏠 Panel","callback_data"=>"refpanel_inicio"]];
+            editMessageText($chat_id,$message_id,textoFichaReferidoV60($ref),["inline_keyboard"=>$rows]);
+            http_response_code(200); exit;
+        }
+        if (preg_match('/^refpanel_renovarid_(\d+)$/',$callback_data,$m)) {
+            $ref=buscarFichaReferidoV60($dataRef,(int)$m[1]);
+            if(!$ref){ editMessageText($chat_id,$message_id,"⚠️ Referido no encontrado."); http_response_code(200); exit; }
+            pedirConfirmacionNombreProceso($state_file,$states,$chat_id,$ref["nombre"]??"","renovar");
+            http_response_code(200); exit;
+        }
+    }
 
     if (strpos($callback_data, "adm_multi_") === 0) {
         if ((string)$chat_id !== (string)$admin_id) { answerCallbackQuery($callback_id,"No autorizado."); http_response_code(200); exit; }
@@ -4008,8 +4214,12 @@ Tu usuario ha quedado vinculado correctamente.");
         if (!empty($data["ok"])) {
             if ($pending === "/caducidad") {
                 sendLongMessage($chat_id, formatCaducidad($data));
-            } elseif ($pending === "/misreferidos") {
-                sendLongMessage($chat_id, formatMisReferidos($data));
+            } elseif ($pending === "/misreferidos" && ($data["tipo"] ?? "") === "referente") {
+                [$txt,$kb] = listaReferidosV60($data, 0, false);
+                sendInlineMessage($chat_id, $txt, $kb);
+            } elseif (($data["tipo"] ?? "") === "referente") {
+                sendLongMessage($chat_id, formatMiCuenta($data));
+                sendInlineMessage($chat_id, "👑 Accede a tu panel de referente:", tecladoPanelReferenteV60());
             } else {
                 sendLongMessage($chat_id, formatMiCuenta($data));
             }
