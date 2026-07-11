@@ -3906,15 +3906,55 @@ if ($user_state === "confirmando_usuario_mdprime") {
     exit;
 }
 
+if ($user_state === "referir_referente") {
+    $nombre_referente = preg_replace('/\s+/', ' ', trim(str_replace(["\r","\n","\t"], ' ', $text)));
+
+    if ($nombre_referente === "" || substr($nombre_referente, 0, 1) === "/") {
+        sendMessage($chat_id, "👥 Escribe el nombre exacto del referente que te ha invitado.\n\nEjemplo:\nVictor");
+        http_response_code(200);
+        exit;
+    }
+
+    $infoRef = consultarClienteApi($nombre_referente);
+
+    if (empty($infoRef["ok"]) || ($infoRef["tipo"] ?? "") !== "referente" || empty($infoRef["cliente"]["id"])) {
+        sendMessage($chat_id, "❌ No encuentro ese referente.\n\nComprueba que has escrito exactamente el nombre con el que aparece en el panel.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nVuelve a escribirlo o pulsa /soporte.");
+        http_response_code(200);
+        exit;
+    }
+
+    $nivelRef = renovarNivelKeyDesdeTexto($infoRef["nivel"]["actual"] ?? "");
+    if ($nivelRef === "") {
+        $nivelRef = "cobre";
+    }
+
+    if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+        $states[$chat_id] = [];
+    }
+
+    $states[$chat_id]["mode"] = "referir_usuario";
+    $states[$chat_id]["referir_context"] = [
+        "alta_tipo" => "referido",
+        "referente_id" => (int)$infoRef["cliente"]["id"],
+        "referente_nombre" => $infoRef["cliente"]["nombre"],
+        "nivel_referente" => $nivelRef
+    ];
+    saveStates($state_file, $states);
+
+    sendMessage($chat_id, "✅ REFERENTE ENCONTRADO\n\n━━━━━━━━━━━━━━━━━━\n\n👥 Referente:\n".$infoRef["cliente"]["nombre"]."\n\n🏆 Nivel actual:\n".renovarNivelTxt($nivelRef)."\n\n💶 Tarifas disponibles:\n3 meses → ".renovarPrecioReferidos($nivelRef, 3)."€\n6 meses → ".renovarPrecioReferidos($nivelRef, 6)."€\n12 meses → ".renovarPrecioReferidos($nivelRef, 12)."€\n\n━━━━━━━━━━━━━━━━━━\n\nAhora escribe el nombre que quieres para tu nueva cuenta MDPRIME.\n\nEjemplo:\nMiguelTV");
+    http_response_code(200);
+    exit;
+}
+
 if ($user_state === "referir_usuario") {
     $usuario_nuevo = preg_replace('/\s+/', ' ', trim(str_replace(["\r","\n","\t"], ' ', $text)));
     if ($usuario_nuevo === "" || substr($usuario_nuevo,0,1) === "/") {
-        sendMessage($chat_id, "👤 Escribe el nombre del nuevo usuario que deseas añadir como referido.");
+        sendMessage($chat_id, "👤 Escribe el nombre que quieres para tu nueva cuenta MDPRIME.");
         http_response_code(200); exit;
     }
     $existe = consultarClienteApi($usuario_nuevo);
     if (!empty($existe["ok"])) {
-        sendMessage($chat_id, "⚠️ Ese usuario ya existe. Para esa cuenta debes usar /renovar.");
+        sendMessage($chat_id, "⚠️ Ese usuario ya existe.\n\nPara esa cuenta debes usar /renovar.\n\nEscribe otro nombre diferente para crear la nueva cuenta.");
         http_response_code(200); exit;
     }
     pedirConfirmacionNombreProceso($state_file, $states, $chat_id, $usuario_nuevo, "nuevo");
@@ -4062,7 +4102,7 @@ Agenda deportiva actualizada.
 Crear una cuenta nueva normal.
 
 👥 /referir
-Añadir una cuenta nueva a tu referente.
+Crear una cuenta nueva y unirla al grupo de tu referente.
 
 🆘 /soporte
 Contactar con soporte si tienes dudas o problemas.
@@ -4247,27 +4287,10 @@ case "/renovar":
     break;
    
     case "/referir":
-        if ($saved_usuario === "") {
-            sendMessage($chat_id, "⚠️ Primero vincula tu cuenta de referente con /micuenta o /cambiarusuario.");
-            break;
-        }
-        $infoRef = consultarClienteApi($saved_usuario);
-        if (empty($infoRef["ok"]) || ($infoRef["tipo"] ?? "") !== "referente" || empty($infoRef["cliente"]["id"])) {
-            sendMessage($chat_id, "❌ Este comando solo está disponible para Referentes VIP registrados.\n\nLa cuenta vinculada actualmente no figura como referente.");
-            break;
-        }
-        $nivelRef = renovarNivelKeyDesdeTexto($infoRef["nivel"]["actual"] ?? "");
-        if ($nivelRef === "") $nivelRef = "cobre";
-        if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
-        $states[$chat_id]["mode"] = "referir_usuario";
-        $states[$chat_id]["referir_context"] = [
-            "alta_tipo" => "referido",
-            "referente_id" => (int)$infoRef["cliente"]["id"],
-            "referente_nombre" => $infoRef["cliente"]["nombre"],
-            "nivel_referente" => $nivelRef
-        ];
-        saveStates($state_file, $states);
-        sendMessage($chat_id, "👥 AÑADIR NUEVO REFERIDO\n\nReferente: ".$infoRef["cliente"]["nombre"]."\nNivel: ".renovarNivelTxt($nivelRef)."\n\nEscribe el nombre de la nueva cuenta que deseas vincular a este referente.\n\n⚠️ No se guardará hasta que el pago sea aprobado.");
+        clearUserMode($state_file, $states, $chat_id);
+        setUserMode($state_file, $states, $chat_id, "referir_referente");
+
+        sendMessage($chat_id, "👥 UNIRME A UN REFERENTE\n\n━━━━━━━━━━━━━━━━━━\n\nEste proceso sirve para crear una cuenta nueva y guardarla dentro del grupo de la persona que te ha recomendado MDPRIME.\n\nPASO 1 DE 4\n\nEscribe el nombre exacto de tu referente, tal como aparece registrado en el panel.\n\nEjemplo:\nVictor\n\n⚠️ El bot comprobará el referente antes de continuar.");
         break;
 
     case "/nuevo":
