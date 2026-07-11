@@ -142,11 +142,29 @@ function configurarComandosTelegram() {
         ["command" => "cambiarusuario", "description" => "Cambiar usuario vinculado"]
     ];
 
-    return telegramRequest("setMyCommands", [
-        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
-        "scope" => json_encode(["type" => "all_private_chats"]),
-        "language_code" => "es"
+    // Eliminar configuraciones antiguas que puedan ocultar comandos según idioma.
+    telegramRequest("deleteMyCommands", [
+        "scope" => json_encode(["type" => "default"])
     ]);
+    telegramRequest("deleteMyCommands", [
+        "scope" => json_encode(["type" => "all_private_chats"])
+    ]);
+
+    // Registrar un menú global sin limitarlo al idioma del dispositivo.
+    $global = telegramRequest("setMyCommands", [
+        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
+        "scope" => json_encode(["type" => "default"])
+    ]);
+
+    // Registrar también el menú para todos los chats privados.
+    $privado = telegramRequest("setMyCommands", [
+        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
+        "scope" => json_encode(["type" => "all_private_chats"])
+    ]);
+
+    return (!empty($global["ok"]) || !empty($privado["ok"]))
+        ? ["ok" => true, "global" => $global, "privado" => $privado]
+        : ["ok" => false, "global" => $global, "privado" => $privado];
 }
 
 function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
@@ -185,9 +203,7 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
                 ],
                 [
                     ["text" => "/nuevo"],
-                    ["text" => "/referir"]
-                ],
-                [
+                    ["text" => "/referir"],
                     ["text" => "/multicuenta"]
                 ],
                 [
@@ -4707,9 +4723,9 @@ Detalle:
         if (!empty($resultadoComandos["ok"])) {
             sendMessage($chat_id, "✅ Menú de comandos actualizado.
 
-Ya deben aparecer /referir y /multicuenta.
+El menú global y el menú privado han sido regenerados.
 
-Pulsa /start para refrescar el teclado.");
+Pulsa /start y cierra/abre el chat para refrescar Telegram.");
         } else {
             sendMessage($chat_id, "❌ No se pudo actualizar el menú de comandos de Telegram.");
         }
