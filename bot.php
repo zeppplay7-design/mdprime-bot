@@ -512,6 +512,16 @@ function enviarAvisosCaducidadMdprime() {
 }
 
 
+function tecladoConvertirNormalAReferido() {
+    return [
+        "inline_keyboard" => [
+            [["text" => "✅ Pasar esta cuenta a referido", "callback_data" => "referir_convertir_si"]],
+            [["text" => "✏️ Escribir otro usuario", "callback_data" => "referir_convertir_no"]],
+            [["text" => "❌ Cancelar", "callback_data" => "referir_convertir_cancelar"]]
+        ]
+    ];
+}
+
 function sendInlineMessage($chat_id, $text, $reply_markup = null) {
     $data = [
         "chat_id" => $chat_id,
@@ -3078,6 +3088,56 @@ function promoverClienteNormalAReferenteRailway($pdo, $normal_id) {
     return ["id" => $nuevoId, "nombre" => $normal["nombre"], "convertido" => true];
 }
 
+function convertirClienteNormalAReferidoRailway($normal_id, $referente_id, $referente_normal_id = 0, $chat_id_cliente = "") {
+    $normal_id = (int)$normal_id;
+    $referente_id = (int)$referente_id;
+    $referente_normal_id = (int)$referente_normal_id;
+    if ($normal_id <= 0 || ($referente_id <= 0 && $referente_normal_id <= 0)) return ["ok"=>false,"error"=>"Datos incompletos para realizar el cambio."];
+
+    try {
+        $pdo = getRailwayPdo();
+        $pdo->beginTransaction();
+        if ($referente_id <= 0 && $referente_normal_id > 0) {
+            if ($normal_id === $referente_normal_id) throw new Exception("Una cuenta no puede ser su propio referente.");
+            $promocion = promoverClienteNormalAReferenteRailway($pdo, $referente_normal_id);
+            $referente_id = (int)$promocion["id"];
+        }
+        $stRef=$pdo->prepare("SELECT id,nombre FROM clientes WHERE id=? LIMIT 1 FOR UPDATE");
+        $stRef->execute([$referente_id]);
+        $referente=$stRef->fetch();
+        if(!$referente) throw new Exception("El referente seleccionado ya no existe en el panel.");
+
+        $st=$pdo->prepare("SELECT * FROM clientes_normales WHERE id=? LIMIT 1 FOR UPDATE");
+        $st->execute([$normal_id]);
+        $normal=$st->fetch();
+        if(!$normal) throw new Exception("La cuenta normal ya no existe o ya fue movida.");
+        $nombre=trim((string)($normal["nombre"]??""));
+        if($nombre==="") throw new Exception("La cuenta normal no tiene un nombre válido.");
+
+        $chk=$pdo->prepare("SELECT id FROM referidos WHERE LOWER(TRIM(nombre))=LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(nombre)),' ','')=REPLACE(LOWER(TRIM(?)),' ','') LIMIT 1");
+        $chk->execute([$nombre,$nombre]);
+        if($chk->fetch()) throw new Exception("Ese usuario ya figura como referido.");
+
+        $estado=trim((string)($normal["estado"]??"Activo")); if($estado==="") $estado="Activo";
+        $fechaAlta=!empty($normal["fecha_alta"])?$normal["fecha_alta"]:date("Y-m-d");
+        $fechaCad=!empty($normal["fecha_caducidad"])?$normal["fecha_caducidad"]:null;
+        $notaAnterior=trim((string)($normal["nota"]??""));
+        $notaCambio="Convertido de cliente normal a referido desde el bot".($chat_id_cliente!==""?". Chat ID: ".$chat_id_cliente:"");
+        $nota=$notaAnterior!==""?$notaAnterior." · ".$notaCambio:$notaCambio;
+
+        $ins=$pdo->prepare("INSERT INTO referidos(cliente_id,nombre,estado,fecha_alta,fecha_caducidad,nota) VALUES(?,?,?,?,?,?)");
+        $ins->execute([$referente_id,$nombre,$estado,$fechaAlta,$fechaCad,$nota]);
+        $nuevoId=(int)$pdo->lastInsertId();
+        if($nuevoId<=0) throw new Exception("No se pudo crear el registro como referido.");
+        $pdo->prepare("DELETE FROM clientes_normales WHERE id=?")->execute([$normal_id]);
+        $pdo->commit();
+        return ["ok"=>true,"id"=>$nuevoId,"usuario"=>$nombre,"referente_nombre"=>$referente["nombre"],"fecha_caducidad"=>$fechaCad,"estado"=>$estado];
+    } catch(Throwable $e) {
+        if(isset($pdo)&&$pdo->inTransaction()) $pdo->rollBack();
+        return ["ok"=>false,"error"=>$e->getMessage()];
+    }
+}
+
 function aplicarNuevoReferidoRailway($usuario, $meses, $referente_id, $from_cliente = [], $chat_id_cliente = "", $referente_normal_id = 0) {
     $usuario = trim((string)$usuario);
     $meses = (int)$meses;
@@ -3282,6 +3342,71 @@ if (isset($update["callback_query"])) {
 
         http_response_code(200);
         exit;
+    }
+
+    if (in_array($callback_data, ["referir_convertir_si", "referir_convertir_no", "referir_convertir_cancelar"], true)) {
+        $ctx = $states[$chat_id]["referir_context"] ?? [];
+        $normalId = (int)($states[$chat_id]["referir_normal_id"] ?? 0);
+        $normalNombre = trim((string)($states[$chat_id]["referir_normal_nombre"] ?? ""));
+
+        if ($callback_data === "referir_convertir_cancelar") {
+            clearUserMode($state_file, $states, $chat_id);
+            editMessageText($chat_id, $message_id, "❌ Proceso cancelado.
+
+No se ha cambiado ninguna cuenta.");
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "referir_convertir_no") {
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+            $states[$chat_id]["mode"] = "referir_usuario";
+            unset($states[$chat_id]["referir_normal_id"], $states[$chat_id]["referir_normal_nombre"]);
+            saveStates($state_file, $states);
+            editMessageText($chat_id, $message_id, "✏️ Escribe otro nombre diferente para la nueva cuenta MDPRIME.");
+            http_response_code(200); exit;
+        }
+        if ($normalId <= 0 || empty($ctx["referente_nombre"])) {
+            editMessageText($chat_id, $message_id, "⚠️ Se perdieron los datos del proceso. Pulsa /referir y comienza de nuevo.");
+            http_response_code(200); exit;
+        }
+        $resultado = convertirClienteNormalAReferidoRailway($normalId,(int)($ctx["referente_id"]??0),(int)($ctx["referente_normal_id"]??0),(string)$chat_id);
+        if (empty($resultado["ok"])) {
+            editMessageText($chat_id, $message_id, "❌ No se pudo realizar el cambio.
+
+Detalle:
+".($resultado["error"]??"Error desconocido")."
+
+Pulsa /soporte si necesitas ayuda.");
+            http_response_code(200); exit;
+        }
+        $usuarioMovido=$resultado["usuario"]??$normalNombre;
+        $referenteNombre=$resultado["referente_nombre"]??($ctx["referente_nombre"]??"No disponible");
+        clearUserMode($state_file,$states,$chat_id);
+        editMessageText($chat_id,$message_id,"✅ CUENTA PASADA A REFERIDO
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario:
+".$usuarioMovido."
+
+👥 Referente asignado:
+".$referenteNombre."
+
+🟢 Estado:
+".($resultado["estado"]??"Activo")."
+
+📅 Caducidad conservada:
+".(!empty($resultado["fecha_caducidad"])?date("d/m/Y",strtotime($resultado["fecha_caducidad"])):"Sin fecha")."
+
+━━━━━━━━━━━━━━━━━━
+
+✅ Ya no aparece como cliente normal.
+✅ Ya aparece dentro de los referidos de ".$referenteNombre.".");
+        sendMessage($admin_id,"🔄 CLIENTE NORMAL PASADO A REFERIDO
+
+👤 Usuario: ".$usuarioMovido."
+👥 Referente: ".$referenteNombre."
+🆔 Solicitado desde Chat ID: ".$chat_id,false);
+        http_response_code(200); exit;
     }
 
     if (in_array($callback_data, ["confirmar_renovar_si", "confirmar_renovar_no", "confirmar_nuevo_si", "confirmar_nuevo_no"], true)) {
@@ -4127,7 +4252,48 @@ if ($user_state === "referir_usuario") {
     }
     $existe = consultarClienteApi($usuario_nuevo);
     if (!empty($existe["ok"])) {
-        sendMessage($chat_id, "⚠️ Ese usuario ya existe.\n\nPara esa cuenta debes usar /renovar.\n\nEscribe otro nombre diferente para crear la nueva cuenta.");
+        if (!empty($existe["cliente_normal"])) {
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+            $normal = $existe["cliente_normal"];
+            $states[$chat_id]["mode"] = "referir_convertir_normal_confirmar";
+            $states[$chat_id]["referir_normal_id"] = (int)($normal["id"] ?? 0);
+            $states[$chat_id]["referir_normal_nombre"] = $normal["nombre"] ?? $usuario_nuevo;
+            saveStates($state_file, $states);
+            $ctx = $states[$chat_id]["referir_context"] ?? [];
+            sendInlineMessage($chat_id,
+                "🔄 CUENTA NORMAL ENCONTRADA
+
+━━━━━━━━━━━━━━━━━━
+
+👤 Usuario:
+".($normal["nombre"] ?? $usuario_nuevo)."
+
+💳 Situación actual:
+Cliente normal / no referido
+
+👥 Nuevo referente:
+".($ctx["referente_nombre"] ?? "No disponible")."
+
+📅 Caducidad actual:
+".($normal["caducidad"] ?? "Sin fecha")."
+
+━━━━━━━━━━━━━━━━━━
+
+Esta cuenta ya existe, pero puedes pasarla al grupo de referidos del referente indicado.
+
+✅ Se conservarán su estado y su fecha de caducidad.
+✅ Dejará de aparecer como cliente normal.
+✅ Aparecerá dentro de /misreferidos del referente.
+
+¿Quieres realizar el cambio?",
+                tecladoConvertirNormalAReferido());
+            http_response_code(200); exit;
+        }
+        sendMessage($chat_id, "⚠️ Ese usuario ya existe como referente o como referido.
+
+Para esa cuenta debes usar /renovar.
+
+Escribe otro nombre diferente.");
         http_response_code(200); exit;
     }
     pedirConfirmacionNombreProceso($state_file, $states, $chat_id, $usuario_nuevo, "nuevo");
