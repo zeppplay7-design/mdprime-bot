@@ -125,6 +125,7 @@ function telegramHtml($text) {
 function configurarComandosTelegram() {
     $commands = [
         ["command" => "start", "description" => "Abrir el menú principal"],
+        ["command" => "cancelar", "description" => "Cancelar el proceso actual"],
         ["command" => "micuenta", "description" => "Consultar mi cuenta"],
         ["command" => "caducidad", "description" => "Consultar caducidad"],
         ["command" => "misreferidos", "description" => "Ver mis referidos"],
@@ -181,6 +182,10 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     if ($keyboard) {
         $data["reply_markup"] = json_encode([
             "keyboard" => [
+                [
+                    ["text" => "/start"],
+                    ["text" => "/cancelar"]
+                ],
                 [
                     ["text" => "/micuenta"],
                     ["text" => "/caducidad"]
@@ -721,6 +726,22 @@ function clearUserMode($file, &$states, $chat_id) {
         if (empty($states[$chat_id])) {
             unset($states[$chat_id]);
         }
+    } else {
+        unset($states[$chat_id]);
+    }
+
+    saveStates($file, $states);
+}
+
+function resetUserProcessState($file, &$states, $chat_id) {
+    $usuarioVinculado = "";
+
+    if (isset($states[$chat_id]) && is_array($states[$chat_id])) {
+        $usuarioVinculado = trim((string)($states[$chat_id]["usuario_mdprime"] ?? ""));
+    }
+
+    if ($usuarioVinculado !== "") {
+        $states[$chat_id] = ["usuario_mdprime" => $usuarioVinculado];
     } else {
         unset($states[$chat_id]);
     }
@@ -4728,7 +4749,17 @@ Pulsa /start y cierra/abre el chat para refrescar Telegram.");
         }
         break;
 
+    case "/cancelar":
+        resetUserProcessState($state_file, $states, $chat_id);
+        sendMessage($chat_id, "✅ Proceso cancelado.
+
+Has vuelto al menú principal.");
+        break;
+
     case "/start":
+
+        // Cancela cualquier proceso incompleto, pero conserva la cuenta MDPRIME vinculada.
+        resetUserProcessState($state_file, $states, $chat_id);
 
         // Actualiza el menú de comandos de Telegram para que aparezcan
         // /referir y /multicuenta al pulsar el botón de comandos.
@@ -4741,6 +4772,12 @@ Pulsa /start y cierra/abre el chat para refrescar Telegram.");
 ━━━━━━━━━━━━━━━━━━
 
 📋 MENÚ PRINCIPAL
+
+🏠 /start
+Volver al menú principal y cancelar cualquier proceso abierto.
+
+❌ /cancelar
+Cancelar el proceso actual sin desvincular tu cuenta.
 
 👤 /micuenta
 Consultar tu cuenta MDPRIME.
