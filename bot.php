@@ -936,6 +936,77 @@ function mdprimeNormalizarBusqueda($txt) {
     return strtr($lower, $map);
 }
 
+function buscarReferenteParaAlta($entrada) {
+    $entrada = trim((string)$entrada);
+    if ($entrada === "") {
+        return ["ok" => false, "error" => "Falta el referente"];
+    }
+
+    try {
+        $pdo = getRailwayPdo();
+        $buscado = mdprimeNormalizarBusqueda($entrada);
+
+        // Se consulta directamente la tabla de referentes. No pasa por
+        // consultarClienteApi(), porque esa función puede identificar primero
+        // un referido con el mismo nombre y devolver un tipo incorrecto.
+        $rows = $pdo->query("SELECT id, nombre, telegram, contacto FROM clientes ORDER BY id ASC")->fetchAll();
+
+        $exactos = [];
+        $parciales = [];
+
+        foreach ($rows as $row) {
+            $campos = [
+                mdprimeNormalizarBusqueda($row["nombre"] ?? ""),
+                mdprimeNormalizarBusqueda($row["telegram"] ?? ""),
+                mdprimeNormalizarBusqueda($row["contacto"] ?? "")
+            ];
+
+            foreach ($campos as $campo) {
+                if ($campo === "") continue;
+
+                if ($campo === $buscado) {
+                    $exactos[(int)$row["id"]] = $row;
+                    break;
+                }
+
+                if (mb_strlen($buscado, "UTF-8") >= 3 && mb_strpos($campo, $buscado, 0, "UTF-8") !== false) {
+                    $parciales[(int)$row["id"]] = $row;
+                }
+            }
+        }
+
+        if (count($exactos) === 1) {
+            $ref = array_values($exactos)[0];
+        } elseif (count($exactos) > 1) {
+            return ["ok" => false, "error" => "Hay varios referentes con ese dato. Escribe el nombre exacto completo."];
+        } elseif (count($parciales) === 1) {
+            $ref = array_values($parciales)[0];
+        } elseif (count($parciales) > 1) {
+            return ["ok" => false, "error" => "Hay varios referentes parecidos. Escribe el nombre exacto completo."];
+        } else {
+            return ["ok" => false, "error" => "Referente no encontrado"];
+        }
+
+        $nivelInfo = obtenerNivelReferentePorId((int)$ref["id"]);
+        $nivel = $nivelInfo["nivel"] ?? "";
+        if ($nivel === "") $nivel = "cobre";
+
+        return [
+            "ok" => true,
+            "referente" => [
+                "id" => (int)$ref["id"],
+                "nombre" => $ref["nombre"] ?? "Sin nombre",
+                "telegram" => $ref["telegram"] ?? "",
+                "contacto" => $ref["contacto"] ?? ""
+            ],
+            "nivel" => $nivel,
+            "activos" => (int)($nivelInfo["activos"] ?? 0)
+        ];
+    } catch (Throwable $e) {
+        return ["ok" => false, "error" => "Error al consultar referentes: ".$e->getMessage()];
+    }
+}
+
 function consultarClienteApi($usuario) {
     global $db_host, $db_port, $db_name, $db_user, $db_pass;
 
@@ -3915,18 +3986,15 @@ if ($user_state === "referir_referente") {
         exit;
     }
 
-    $infoRef = consultarClienteApi($nombre_referente);
+    $infoRef = buscarReferenteParaAlta($nombre_referente);
 
-    if (empty($infoRef["ok"]) || ($infoRef["tipo"] ?? "") !== "referente" || empty($infoRef["cliente"]["id"])) {
-        sendMessage($chat_id, "❌ No encuentro ese referente.\n\nComprueba que has escrito exactamente el nombre con el que aparece en el panel.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nVuelve a escribirlo o pulsa /soporte.");
+    if (empty($infoRef["ok"]) || empty($infoRef["referente"]["id"])) {
+        sendMessage($chat_id, "❌ No encuentro ese referente.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nDetalle:\n".($infoRef["error"] ?? "No encontrado")."\n\nPuedes escribir su nombre del panel, su usuario de Telegram o su contacto.\n\nVuelve a escribirlo o pulsa /soporte.");
         http_response_code(200);
         exit;
     }
 
-    $nivelRef = renovarNivelKeyDesdeTexto($infoRef["nivel"]["actual"] ?? "");
-    if ($nivelRef === "") {
-        $nivelRef = "cobre";
-    }
+    $nivelRef = $infoRef["nivel"] ?? "cobre";
 
     if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
         $states[$chat_id] = [];
@@ -3935,13 +4003,13 @@ if ($user_state === "referir_referente") {
     $states[$chat_id]["mode"] = "referir_usuario";
     $states[$chat_id]["referir_context"] = [
         "alta_tipo" => "referido",
-        "referente_id" => (int)$infoRef["cliente"]["id"],
-        "referente_nombre" => $infoRef["cliente"]["nombre"],
+        "referente_id" => (int)$infoRef["referente"]["id"],
+        "referente_nombre" => $infoRef["referente"]["nombre"],
         "nivel_referente" => $nivelRef
     ];
     saveStates($state_file, $states);
 
-    sendMessage($chat_id, "✅ REFERENTE ENCONTRADO\n\n━━━━━━━━━━━━━━━━━━\n\n👥 Referente:\n".$infoRef["cliente"]["nombre"]."\n\n🏆 Nivel actual:\n".renovarNivelTxt($nivelRef)."\n\n💶 Tarifas disponibles:\n3 meses → ".renovarPrecioReferidos($nivelRef, 3)."€\n6 meses → ".renovarPrecioReferidos($nivelRef, 6)."€\n12 meses → ".renovarPrecioReferidos($nivelRef, 12)."€\n\n━━━━━━━━━━━━━━━━━━\n\nAhora escribe el nombre que quieres para tu nueva cuenta MDPRIME.\n\nEjemplo:\nMiguelTV");
+    sendMessage($chat_id, "✅ REFERENTE ENCONTRADO\n\n━━━━━━━━━━━━━━━━━━\n\n👥 Referente:\n".$infoRef["referente"]["nombre"]."\n\n🏆 Nivel actual:\n".renovarNivelTxt($nivelRef)."\n\n💶 Tarifas disponibles:\n3 meses → ".renovarPrecioReferidos($nivelRef, 3)."€\n6 meses → ".renovarPrecioReferidos($nivelRef, 6)."€\n12 meses → ".renovarPrecioReferidos($nivelRef, 12)."€\n\n━━━━━━━━━━━━━━━━━━\n\nAhora escribe el nombre que quieres para tu nueva cuenta MDPRIME.\n\nEjemplo:\nMiguelTV");
     http_response_code(200);
     exit;
 }
