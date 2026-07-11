@@ -1123,6 +1123,29 @@ function buscarReferenteParaAlta($entrada) {
     }
 }
 
+function buscarClienteNormalExactoParaReferir($usuario) {
+    $usuario = trim((string)$usuario);
+    if ($usuario === "") return null;
+
+    try {
+        $pdo = getRailwayPdo();
+        $stmt = $pdo->prepare("
+            SELECT *
+            FROM clientes_normales
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$usuario, $usuario]);
+        $normal = $stmt->fetch();
+
+        return $normal ? construirRespuestaClienteNormal($normal) : null;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 function consultarClienteApi($usuario) {
     global $db_host, $db_port, $db_name, $db_user, $db_pass;
 
@@ -4732,7 +4755,14 @@ if ($user_state === "referir_usuario") {
         sendMessage($chat_id, "👤 Escribe el nombre que quieres para tu nueva cuenta MDPRIME.");
         http_response_code(200); exit;
     }
-    $existe = consultarClienteApi($usuario_nuevo);
+    // En /referir damos prioridad absoluta a una coincidencia exacta en clientes_normales.
+    // Así un nombre numérico (por ejemplo 111111111) no se confunde con teléfono,
+    // Telegram o contacto de un referente existente.
+    $existe = buscarClienteNormalExactoParaReferir($usuario_nuevo);
+    if (!$existe) {
+        $existe = consultarClienteApi($usuario_nuevo);
+    }
+
     if (!empty($existe["ok"])) {
         if (!empty($existe["cliente_normal"])) {
             if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
