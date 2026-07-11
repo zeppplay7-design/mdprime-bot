@@ -2895,6 +2895,110 @@ function aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente = [], $chat_i
     }
 }
 
+
+
+/* =========================
+   CENTRO DE AYUDA / SOPORTE
+========================= */
+
+function soporteMenuKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [["text" => "🔥 Activar apps desconocidas", "callback_data" => "sup_firetv"]],
+            [["text" => "🚫 Bloqueos de instalación", "callback_data" => "sup_bloqueos"]],
+            [["text" => "🌐 Problemas de conexión", "callback_data" => "sup_conexion"]],
+            [["text" => "📺 Dispositivos compatibles", "callback_data" => "sup_dispositivos"]],
+            [["text" => "👨‍💻 Contactar con soporte", "callback_data" => "sup_contactar"]]
+        ]
+    ];
+}
+
+function soporteRespuestaKeyboard() {
+    return [
+        "inline_keyboard" => [
+            [["text" => "⬅️ Volver a preguntas", "callback_data" => "sup_menu"]],
+            [["text" => "👨‍💻 Contactar con soporte", "callback_data" => "sup_contactar"]]
+        ]
+    ];
+}
+
+function soporteMenuTexto() {
+    return "🛠 CENTRO DE AYUDA MDPRIME
+
+Selecciona una pregunta frecuente:
+
+Pulsa sobre la opción para abrir la respuesta.";
+}
+
+function soporteTextoFireTv() {
+    return "🔥 ACTIVAR APLICACIONES DESCONOCIDAS
+
+🛠️ Paso 1: Mostrar el menú de Desarrollador
+
+1. Ve a Configuración ⚙️.
+2. Entra en Mi Fire TV.
+3. Selecciona Acerca de.
+4. Colócate sobre el nombre de tu Fire TV Stick.
+5. Pulsa el botón central del mando 7 veces seguidas.
+
+Aparecerá el mensaje:
+«No es necesario, ya eres un desarrollador».
+
+🔓 Paso 2: Activar los orígenes desconocidos
+
+1. Regresa a la pantalla anterior.
+2. Entra en Opciones para desarrolladores.
+3. Pulsa Instalar aplicaciones desconocidas.
+4. Selecciona Downloader y cámbialo a ACTIVADO.";
+}
+
+function soporteTextoBloqueos() {
+    return "🚫 BLOQUEOS DE INSTALACIÓN
+
+Si el sistema bloquea la APK o aparece un aviso de seguridad, haz esto:
+
+1. Cuando termine la descarga, pulsa Instalar.
+2. Si aparece un aviso de seguridad, pulsa Más detalles.
+3. Pulsa Instalar de todas formas.
+4. Espera a que termine la instalación.
+5. Abre la aplicación.";
+}
+
+function soporteTextoConexion() {
+    return "🌐 PROBLEMAS DE CONEXIÓN
+
+Si la app va lenta, se corta o no conecta, prueba estos pasos en este orden:
+
+1. Cierra las aplicaciones abiertas para liberar memoria.
+2. Borra la caché de la app.
+3. Reinicia el dispositivo.
+4. Apaga el router durante 2 minutos.
+5. Enciende primero el router y espera a que tenga Internet.
+6. Después enciende el dispositivo y prueba otra vez.
+7. Si usas VPN, prueba a desactivarla.
+8. Si puedes, conecta el dispositivo por cable Ethernet.";
+}
+
+function soporteTextoDispositivos() {
+    return "📺 DISPOSITIVOS COMPATIBLES
+
+✅ COMPATIBLES
+
+• Android TV: compatible.
+• TV Box Android: compatible.
+• Fire TV / Fire Stick: compatible activando permisos.
+• Móvil Android: compatible si permite instalar APK.
+• Tablet Android: compatible si permite instalar APK.
+
+❌ NO COMPATIBLES DE FORMA DIRECTA
+
+• iPhone
+• iPad
+• Apple TV
+
+Estos dispositivos no pueden instalar archivos APK de Android de forma directa.";
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -2928,6 +3032,27 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+
+    if (strpos($callback_data, "sup_") === 0) {
+        if ($callback_data === "sup_menu") {
+            clearUserMode($state_file, $states, $chat_id);
+            editMessageText($chat_id, $message_id, soporteMenuTexto(), soporteMenuKeyboard());
+        } elseif ($callback_data === "sup_firetv") {
+            editMessageText($chat_id, $message_id, soporteTextoFireTv(), soporteRespuestaKeyboard());
+        } elseif ($callback_data === "sup_bloqueos") {
+            editMessageText($chat_id, $message_id, soporteTextoBloqueos(), soporteRespuestaKeyboard());
+        } elseif ($callback_data === "sup_conexion") {
+            editMessageText($chat_id, $message_id, soporteTextoConexion(), soporteRespuestaKeyboard());
+        } elseif ($callback_data === "sup_dispositivos") {
+            editMessageText($chat_id, $message_id, soporteTextoDispositivos(), soporteRespuestaKeyboard());
+        } elseif ($callback_data === "sup_contactar") {
+            setUserMode($state_file, $states, $chat_id, "soporte");
+            editMessageText($chat_id, $message_id, "👨‍💻 CONTACTAR CON SOPORTE\n\nDescribe tu problema con el mayor detalle posible.\n\nPuedes enviar texto, foto o captura de pantalla.");
+        }
+
+        http_response_code(200);
+        exit;
+    }
 
     if (in_array($callback_data, ["confirmar_renovar_si", "confirmar_renovar_no", "confirmar_nuevo_si", "confirmar_nuevo_no"], true)) {
         $es_nuevo = strpos($callback_data, "confirmar_nuevo_") === 0;
@@ -4054,9 +4179,8 @@ case "/renovar":
 
     case "/soporte":
 
-        setUserMode($state_file, $states, $chat_id, "soporte");
-
-        sendMessage($chat_id, "🛠 Describe tu problema con detalle.");
+        clearUserMode($state_file, $states, $chat_id);
+        sendInlineMessage($chat_id, soporteMenuTexto(), soporteMenuKeyboard());
         break;
 
     case "/agenda":
