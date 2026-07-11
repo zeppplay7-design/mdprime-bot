@@ -573,16 +573,6 @@ function tecladoAdminConvertirNormalAReferido($cliente_chat_id) {
     ];
 }
 
-function tecladoAdminPromoverNormalAReferente($cliente_chat_id) {
-    $cliente_chat_id = preg_replace('/[^0-9\-]/', '', (string)$cliente_chat_id);
-    return [
-        "inline_keyboard" => [
-            [["text" => "✅ Aprobar como Referente VIP", "callback_data" => "adm_refprom_si_".$cliente_chat_id]],
-            [["text" => "❌ Rechazar solicitud", "callback_data" => "adm_refprom_no_".$cliente_chat_id]]
-        ]
-    ];
-}
-
 function sendInlineMessage($chat_id, $text, $reply_markup = null) {
     $data = [
         "chat_id" => $chat_id,
@@ -1106,13 +1096,6 @@ function buscarReferenteParaAlta($entrada) {
                 "ok" => false,
                 "tipo_error" => "cliente_normal_no_referente",
                 "nombre_encontrado" => $normal["nombre"] ?? $entrada,
-                "cliente_normal" => [
-                    "id" => (int)($normal["id"] ?? 0),
-                    "nombre" => $normal["nombre"] ?? $entrada,
-                    "telegram" => $normal["telegram"] ?? "",
-                    "contacto" => $normal["contacto"] ?? "",
-                    "telefono" => $normal["telefono"] ?? ""
-                ],
                 "error" => "Ese usuario existe en el panel, pero actualmente es un cliente normal y no está registrado como Referente VIP."
             ];
         }
@@ -3618,116 +3601,6 @@ if (isset($update["callback_query"])) {
         exit;
     }
 
-    if (strpos($callback_data, "adm_refprom_") === 0) {
-        if ((string)$chat_id !== (string)$admin_id) {
-            answerCallbackQuery($callback_id, "Acción exclusiva de administración.");
-            http_response_code(200); exit;
-        }
-
-        if (!preg_match('/^adm_refprom_(si|no)_(-?[0-9]+)$/', $callback_data, $m)) {
-            editMessageText($chat_id, $message_id, "❌ Solicitud no válida.");
-            http_response_code(200); exit;
-        }
-
-        $accion = $m[1];
-        $clienteChatId = (string)$m[2];
-        $clienteStates = loadStates($state_file);
-        $ctxCliente = $clienteStates[$clienteChatId] ?? [];
-        $normalId = (int)($ctxCliente["promover_referente_normal_id"] ?? 0);
-        $normalNombre = trim((string)($ctxCliente["promover_referente_normal_nombre"] ?? ""));
-
-        if ($normalId <= 0 || $normalNombre === "") {
-            editMessageText($chat_id, $message_id, "⚠️ La solicitud ya no está disponible o perdió sus datos.");
-            http_response_code(200); exit;
-        }
-
-        if ($accion === "no") {
-            clearUserMode($state_file, $clienteStates, $clienteChatId);
-            editMessageText($chat_id, $message_id, "❌ SOLICITUD RECHAZADA
-
-👤 Usuario: ".$normalNombre."
-
-No se ha convertido en Referente VIP.");
-            sendMessage($clienteChatId, "❌ El administrador no ha aprobado que ".$normalNombre." sea convertido en Referente VIP.
-
-Puedes escribir otro referente válido o pulsar /soporte.");
-            http_response_code(200); exit;
-        }
-
-        try {
-            $pdoProm = getRailwayPdo();
-            $pdoProm->beginTransaction();
-            $promocion = promoverClienteNormalAReferenteRailway($pdoProm, $normalId);
-            $pdoProm->commit();
-
-            $nuevoReferenteId = (int)($promocion["id"] ?? 0);
-            $nuevoReferenteNombre = $promocion["nombre"] ?? $normalNombre;
-            if ($nuevoReferenteId <= 0) {
-                throw new Exception("No se obtuvo el identificador del nuevo referente.");
-            }
-
-            $nivelInfo = obtenerNivelReferentePorId($nuevoReferenteId);
-            $nivel = $nivelInfo["nivel"] ?? "";
-            if ($nivel === "") $nivel = "cobre";
-
-            if (!isset($clienteStates[$clienteChatId]) || !is_array($clienteStates[$clienteChatId])) {
-                $clienteStates[$clienteChatId] = [];
-            }
-            $clienteStates[$clienteChatId]["mode"] = "referir_usuario";
-            $clienteStates[$clienteChatId]["referir_context"] = [
-                "alta_tipo" => "referido",
-                "referente_id" => $nuevoReferenteId,
-                "referente_normal_id" => 0,
-                "convertir_referente" => false,
-                "referente_nombre" => $nuevoReferenteNombre,
-                "nivel_referente" => $nivel
-            ];
-            unset($clienteStates[$clienteChatId]["promover_referente_normal_id"], $clienteStates[$clienteChatId]["promover_referente_normal_nombre"]);
-            saveStates($state_file, $clienteStates);
-
-            editMessageText($chat_id, $message_id, "✅ REFERENTE VIP APROBADO
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario:
-".$nuevoReferenteNombre."
-
-🏆 Nivel inicial:
-".renovarNivelTxt($nivel)."
-
-✅ Eliminado de clientes normales.
-✅ Añadido como Referente VIP.
-✅ El usuario puede continuar el alta de su referido.");
-
-            sendMessage($clienteChatId, "✅ APROBACIÓN COMPLETADA
-
-━━━━━━━━━━━━━━━━━━
-
-👥 Referente VIP:
-".$nuevoReferenteNombre."
-
-🏆 Nivel actual:
-".renovarNivelTxt($nivel)."
-
-💶 Tarifas disponibles:
-3 meses → ".renovarPrecioReferidos($nivel, 3)."€
-6 meses → ".renovarPrecioReferidos($nivel, 6)."€
-12 meses → ".renovarPrecioReferidos($nivel, 12)."€
-
-━━━━━━━━━━━━━━━━━━
-
-Ahora escribe el nombre que quieres para la nueva cuenta MDPRIME que quedará unida a este referente.");
-        } catch (Throwable $e) {
-            if (isset($pdoProm) && $pdoProm->inTransaction()) $pdoProm->rollBack();
-            editMessageText($chat_id, $message_id, "❌ No se pudo convertir el cliente normal en Referente VIP.
-
-Detalle:
-".$e->getMessage());
-        }
-
-        http_response_code(200); exit;
-    }
-
     if (strpos($callback_data, "adm_refconv_") === 0) {
         if ((string)$chat_id !== (string)$admin_id) {
             answerCallbackQuery($callback_id, "Acción exclusiva de administración.");
@@ -4640,63 +4513,7 @@ if ($user_state === "referir_referente") {
 
     if (empty($infoRef["ok"]) || empty($infoRef["referente"]["id"])) {
         if (($infoRef["tipo_error"] ?? "") === "cliente_normal_no_referente") {
-            $normalRef = $infoRef["cliente_normal"] ?? [];
-            $normalRefId = (int)($normalRef["id"] ?? 0);
-            $normalRefNombre = $normalRef["nombre"] ?? ($infoRef["nombre_encontrado"] ?? $nombre_referente);
-
-            if ($normalRefId <= 0) {
-                sendMessage($chat_id, "❌ He encontrado el cliente normal, pero no pude obtener su identificador. Pulsa /soporte.");
-                http_response_code(200); exit;
-            }
-
-            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
-            $states[$chat_id]["mode"] = "referir_promocion_pendiente_admin";
-            $states[$chat_id]["promover_referente_normal_id"] = $normalRefId;
-            $states[$chat_id]["promover_referente_normal_nombre"] = $normalRefNombre;
-            saveStates($state_file, $states);
-
-            sendMessage($chat_id, "⏳ SOLICITUD ENVIADA AL ADMINISTRADOR
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario encontrado:
-".$normalRefNombre."
-
-Actualmente es cliente normal. Se ha solicitado convertirlo en Referente VIP.
-
-No se realizará ningún cambio hasta que administración lo apruebe.
-
-Cuando sea aprobado, el bot continuará automáticamente y te pedirá el nombre de la nueva cuenta.");
-
-            $nombreTelegram = trim(($from["first_name"] ?? "")." ".($from["last_name"] ?? ""));
-            $aliasTelegram = $from["username"] ?? "";
-            sendInlineMessage($admin_id,
-                "🔔 SOLICITUD DE NUEVO REFERENTE VIP
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Cliente normal:
-".$normalRefNombre."
-
-📲 Telegram guardado:
-".(($normalRef["telegram"] ?? "") !== "" ? "@".ltrim($normalRef["telegram"], "@") : "No disponible")."
-
-☎️ Contacto:
-".(($normalRef["contacto"] ?? "") !== "" ? $normalRef["contacto"] : "No disponible")."
-
-👤 Solicitante Telegram:
-".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."
-
-📲 Alias solicitante:
-".($aliasTelegram !== "" ? "@".$aliasTelegram : "No disponible")."
-
-🆔 Chat ID:
-".$chat_id."
-
-━━━━━━━━━━━━━━━━━━
-
-¿Deseas convertir este cliente normal en Referente VIP?",
-                tecladoAdminPromoverNormalAReferente($chat_id));
+            sendMessage($chat_id, "⚠️ ESTE USUARIO NO ES REFERENTE\n\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario encontrado:\n".($infoRef["nombre_encontrado"] ?? $nombre_referente)."\n\nEste usuario aparece en el panel como cliente normal, pero no está dado de alta como Referente VIP.\n\nPor tanto, no puede recibir nuevos referidos.\n\nDebe contactar con administración para que lo convierta primero en referente.\n\nEscribe otro referente válido o pulsa /soporte.");
         } else {
             sendMessage($chat_id, "❌ No encuentro ese referente.\n\n👤 Referente escrito:\n".$nombre_referente."\n\nDetalle:\n".($infoRef["error"] ?? "No encontrado")."\n\nPuedes escribir su nombre del panel, su usuario de Telegram o su contacto.\n\nVuelve a escribirlo o pulsa /soporte.");
         }
