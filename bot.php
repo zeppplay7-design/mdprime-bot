@@ -3649,6 +3649,63 @@ function textoFichaReferidoV60($ref) {
 📝 ".$ref["nota"] : "");
 }
 
+
+
+/* =========================
+   V60 PANEL INTERACTIVO CLIENTE NORMAL
+========================= */
+function tecladoPanelClienteNormalV60() {
+    return ["inline_keyboard" => [
+        [["text" => "👤 Mi cuenta", "callback_data" => "normalpanel_cuenta"], ["text" => "🔄 Renovar", "callback_data" => "normalpanel_renovar"]],
+        [["text" => "👥 Unirme a un referente", "callback_data" => "normalpanel_unir"]],
+        [["text" => "📲 Apps", "callback_data" => "normalpanel_apps"], ["text" => "🆘 Soporte", "callback_data" => "normalpanel_soporte"]],
+        [["text" => "🏠 Inicio", "callback_data" => "normalpanel_inicio"]]
+    ]];
+}
+
+function tecladoVolverPanelClienteNormalV60($extra = []) {
+    $rows = $extra;
+    $rows[] = [["text" => "⬅️ Volver al panel", "callback_data" => "normalpanel_inicio"]];
+    return ["inline_keyboard" => $rows];
+}
+
+function datosClienteNormalV60($usuario) {
+    $data = consultarClienteApi($usuario);
+    if (empty($data["ok"]) || ($data["tipo"] ?? "") !== "normal") return null;
+    return $data;
+}
+
+function textoPanelClienteNormalV60($data) {
+    $n = $data["cliente_normal"] ?? [];
+    return "👤 PANEL CLIENTE MDPRIME
+
+".
+        "🙋 Usuario: ".($n["nombre"] ?? "Sin nombre")."
+".
+        estadoIcono($n["estado"] ?? "Inactivo")." Estado: ".($n["estado"] ?? "Sin estado")."
+".
+        "📅 Caducidad: ".($n["caducidad"] ?? "Sin fecha")."
+".
+        "⏳ ".fmtDias($n["dias"] ?? null)."
+
+".
+        "Puedes renovar tu cuenta o solicitar unirte a un Referente VIP con aprobación administrativa.";
+}
+
+function mostrarPanelClienteNormalV60($chat_id, $usuario, $editar_id = null) {
+    $data = datosClienteNormalV60($usuario);
+    if (!$data) {
+        $txt = "⚠️ Esta cuenta no está registrada como cliente normal.";
+        if ($editar_id) editMessageText($chat_id, $editar_id, $txt);
+        else sendMessage($chat_id, $txt);
+        return false;
+    }
+    $txt = textoPanelClienteNormalV60($data);
+    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelClienteNormalV60());
+    else sendInlineMessage($chat_id, $txt, tecladoPanelClienteNormalV60());
+    return true;
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -3682,6 +3739,60 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+
+    if (strpos($callback_data, "normalpanel_") === 0) {
+        $usuario = getSavedUsuario($states, $chat_id);
+        if ($usuario === "") {
+            editMessageText($chat_id, $message_id, "⚠️ Primero vincula tu usuario con /micuenta.");
+            http_response_code(200); exit;
+        }
+        $dataNormal = datosClienteNormalV60($usuario);
+        if (!$dataNormal) {
+            editMessageText($chat_id, $message_id, "⚠️ La cuenta vinculada ya no figura como cliente normal.");
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "normalpanel_inicio") {
+            mostrarPanelClienteNormalV60($chat_id, $usuario, $message_id);
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "normalpanel_cuenta") {
+            editMessageText($chat_id, $message_id, formatMiCuenta($dataNormal), tecladoVolverPanelClienteNormalV60());
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "normalpanel_renovar") {
+            editMessageText($chat_id, $message_id, "🔄 RENOVAR CUENTA
+
+Vamos a iniciar la renovación de:
+👤 ".$usuario);
+            iniciarRenovacionConUsuario($state_file, $states, $chat_id, $usuario);
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "normalpanel_unir") {
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+            $states[$chat_id]["mode"] = "normalpanel_elegir_referente";
+            saveStates($state_file, $states);
+            editMessageText($chat_id, $message_id, "👥 UNIRME A UN REFERENTE VIP
+
+Escribe el nombre exacto, Telegram o contacto del referente al que deseas unirte.
+
+⚠️ El cambio necesitará aprobación del administrador.
+
+Para cancelar: /cancelar");
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "normalpanel_apps") {
+            editMessageText($chat_id, $message_id, "📲 APPS MDPRIME
+
+Pulsa /apps para ver las aplicaciones disponibles.", tecladoVolverPanelClienteNormalV60());
+            http_response_code(200); exit;
+        }
+        if ($callback_data === "normalpanel_soporte") {
+            editMessageText($chat_id, $message_id, "🆘 SOPORTE MDPRIME
+
+Pulsa /soporte y explica tu incidencia.", tecladoVolverPanelClienteNormalV60());
+            http_response_code(200); exit;
+        }
+    }
 
     if (strpos($callback_data, "refpanel_") === 0) {
         $usuario = getSavedUsuario($states, $chat_id);
@@ -4220,6 +4331,9 @@ Tu usuario ha quedado vinculado correctamente.");
             } elseif (($data["tipo"] ?? "") === "referente") {
                 sendLongMessage($chat_id, formatMiCuenta($data));
                 sendInlineMessage($chat_id, "👑 Accede a tu panel de referente:", tecladoPanelReferenteV60());
+            } elseif (($data["tipo"] ?? "") === "normal") {
+                sendLongMessage($chat_id, formatMiCuenta($data));
+                sendInlineMessage($chat_id, "👤 Accede a tu panel de cliente:", tecladoPanelClienteNormalV60());
             } else {
                 sendLongMessage($chat_id, formatMiCuenta($data));
             }
@@ -4858,6 +4972,92 @@ if ($user_state === "confirmando_usuario_mdprime") {
 
     http_response_code(200);
     exit;
+}
+
+if ($user_state === "normalpanel_elegir_referente") {
+    $nombre_referente = preg_replace('/\s+/', ' ', trim(str_replace(["\r","\n","\t"], ' ', $text)));
+    if ($nombre_referente === "" || substr($nombre_referente, 0, 1) === "/") {
+        sendMessage($chat_id, "👥 Escribe el nombre exacto, Telegram o contacto del Referente VIP.");
+        http_response_code(200); exit;
+    }
+
+    $usuarioNormal = getSavedUsuario($states, $chat_id);
+    $dataNormal = datosClienteNormalV60($usuarioNormal);
+    if (!$dataNormal) {
+        resetUserProcessState($state_file, $states, $chat_id);
+        sendMessage($chat_id, "⚠️ Tu cuenta ya no figura como cliente normal. Pulsa /micuenta para actualizarla.");
+        http_response_code(200); exit;
+    }
+
+    $infoRef = buscarReferenteParaAlta($nombre_referente);
+    if (empty($infoRef["ok"]) || empty($infoRef["referente"]["id"])) {
+        sendMessage($chat_id, "❌ No encuentro ese Referente VIP.
+
+Detalle:
+".($infoRef["error"] ?? "No encontrado")."
+
+Escríbelo de nuevo o pulsa /cancelar.");
+        http_response_code(200); exit;
+    }
+
+    $normal = $dataNormal["cliente_normal"] ?? [];
+    $normalId = (int)($normal["id"] ?? 0);
+    if ($normalId <= 0) {
+        sendMessage($chat_id, "❌ No pude obtener el identificador de tu cuenta. Pulsa /soporte.");
+        http_response_code(200); exit;
+    }
+
+    $refId = (int)$infoRef["referente"]["id"];
+    $refNombre = $infoRef["referente"]["nombre"] ?? $nombre_referente;
+
+    $states[$chat_id]["mode"] = "referir_conversion_pendiente_admin";
+    $states[$chat_id]["referir_normal_id"] = $normalId;
+    $states[$chat_id]["referir_normal_nombre"] = $normal["nombre"] ?? $usuarioNormal;
+    $states[$chat_id]["referir_context"] = [
+        "alta_tipo" => "referido",
+        "referente_id" => $refId,
+        "referente_normal_id" => 0,
+        "convertir_referente" => false,
+        "referente_nombre" => $refNombre,
+        "nivel_referente" => $infoRef["nivel"] ?? "cobre"
+    ];
+    saveStates($state_file, $states);
+
+    sendMessage($chat_id, "⏳ SOLICITUD ENVIADA
+
+👤 Tu cuenta: ".($normal["nombre"] ?? $usuarioNormal)."
+👥 Referente solicitado: ".$refNombre."
+📅 Caducidad conservada: ".($normal["caducidad"] ?? "Sin fecha")."
+
+El cambio solo se realizará si lo aprueba el administrador.");
+
+    $nombreTelegram = trim(($from["first_name"] ?? "")." ".($from["last_name"] ?? ""));
+    $aliasTelegram = $from["username"] ?? "";
+    sendInlineMessage($admin_id,
+        "🔔 SOLICITUD: CLIENTE NORMAL → REFERIDO
+
+👤 Cliente normal:
+".($normal["nombre"] ?? $usuarioNormal)."
+
+👥 Referente solicitado:
+".$refNombre."
+
+📅 Caducidad actual:
+".($normal["caducidad"] ?? "Sin fecha")."
+
+👤 Solicitante Telegram:
+".($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."
+
+📲 Alias:
+".($aliasTelegram !== "" ? "@".$aliasTelegram : "No disponible")."
+
+🆔 Chat ID:
+".$chat_id."
+
+¿Aprobar el cambio conservando la fecha de caducidad?",
+        tecladoAdminConvertirNormalAReferido($chat_id)
+    );
+    http_response_code(200); exit;
 }
 
 if ($user_state === "referir_referente") {
