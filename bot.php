@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V48-CONFIRMACION-NOMBRE-RENOVAR-NUEVO-20260710";
+$bot_version = "MDPRIME-BOT-V50-REFERIR-AUTOVINCULADO-20260711";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -158,9 +158,10 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
                 ],
                 [
                     ["text" => "/nuevo"],
-                    ["text" => "/soporte"]
+                    ["text" => "/referir"]
                 ],
                 [
+                    ["text" => "/soporte"],
                     ["text" => "/cambiarusuario"]
                 ]
             ],
@@ -2057,6 +2058,7 @@ function iniciarRenovacionConUsuario($state_file, &$states, $chat_id, $usuario_m
     }
 
     $es_vip = ($es_referido || $nivel_actual !== "");
+    $encontrado_en_bd = !empty($datos["ok"]);
 
     $ren_data = [
         "usuario" => $usuario_mdprime,
@@ -2609,17 +2611,29 @@ Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo ant
    NUEVA CUENTA MDPRIME
 ========================= */
 
-function nuevoDuracionKeyboard() {
+function precioAltaDesdeData($data, $meses) {
+    if (($data["alta_tipo"] ?? "normal") === "referido") {
+        $nivel = $data["nivel_referente"] ?? "cobre";
+        return renovarPrecioReferidos($nivel, $meses);
+    }
+    return renovarPrecioNormal($meses);
+}
+
+function nuevoDuracionKeyboard($data = []) {
+    $p3 = precioAltaDesdeData($data, 3);
+    $p6 = precioAltaDesdeData($data, 6);
+    $p12 = precioAltaDesdeData($data, 12);
+
     return [
         "inline_keyboard" => [
             [
-                ["text" => "📦 3 meses · ".renovarPrecioNormal(3)."€", "callback_data" => "nuevo_dur_3"]
+                ["text" => "📦 3 meses · ".$p3."€", "callback_data" => "nuevo_dur_3"]
             ],
             [
-                ["text" => "📦 6 meses · ".renovarPrecioNormal(6)."€", "callback_data" => "nuevo_dur_6"]
+                ["text" => "📦 6 meses · ".$p6."€", "callback_data" => "nuevo_dur_6"]
             ],
             [
-                ["text" => "📦 12 meses · ".renovarPrecioNormal(12)."€", "callback_data" => "nuevo_dur_12"]
+                ["text" => "📦 12 meses · ".$p12."€", "callback_data" => "nuevo_dur_12"]
             ],
             [
                 ["text" => "❌ Cancelar", "callback_data" => "nuevo_cancelar"]
@@ -2730,9 +2744,10 @@ function mensajePagoNuevo($data) {
 
     $usuario = $data["usuario"] ?? "Sin usuario";
     $meses = (int)($data["meses"] ?? 0);
-    $precio = renovarPrecioNormal($meses);
+    $precio = precioAltaDesdeData($data, $meses);
+    $esReferido = (($data["alta_tipo"] ?? "normal") === "referido");
 
-    return "🆕 ALTA DE CUENTA NUEVA MDPRIME
+    return ($esReferido ? "👥 ALTA DE NUEVO REFERIDO MDPRIME" : "🆕 ALTA DE CUENTA NUEVA MDPRIME")."
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2764,7 +2779,8 @@ Tu cuenta NO se crea en la base de datos hasta que el pago sea revisado y aproba
 function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
     $usuario = $data["usuario"] ?? "Sin usuario";
     $meses = (int)($data["meses"] ?? 0);
-    $precio = renovarPrecioNormal($meses);
+    $precio = precioAltaDesdeData($data, $meses);
+    $esReferido = (($data["alta_tipo"] ?? "normal") === "referido");
 
     $nombre = trim(
         ($update_from["first_name"] ?? "") . " " .
@@ -2773,7 +2789,7 @@ function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
 
     $usernameTelegram = $update_from["username"] ?? "";
 
-    return "🆕 NUEVO COMPROBANTE PARA ALTA
+    return ($esReferido ? "👥 NUEVO COMPROBANTE DE REFERIDO" : "🆕 NUEVO COMPROBANTE PARA ALTA")."
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -2802,7 +2818,7 @@ function mensajeAdminComprobanteNuevo($chat_id, $update_from, $data) {
 
 📸 Comprobante recibido debajo.
 
-⚠️ Al aprobar, se creará la cuenta en clientes_normales como Activo.";
+".($esReferido ? "⚠️ Al aprobar, se vinculará al referente: ".($data["referente_nombre"] ?? "No disponible")."." : "⚠️ Al aprobar, se creará la cuenta en clientes_normales como Activo.");
 }
 
 function aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente = [], $chat_id_cliente = "") {
@@ -2896,6 +2912,47 @@ function aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente = [], $chat_i
 }
 
 
+
+function aplicarNuevoReferidoRailway($usuario, $meses, $referente_id, $from_cliente = [], $chat_id_cliente = "") {
+    $usuario = trim((string)$usuario);
+    $meses = (int)$meses;
+    $referente_id = (int)$referente_id;
+
+    if ($usuario === "" || !in_array($meses, [3,6,12], true) || $referente_id <= 0) {
+        return ["ok" => false, "error" => "Datos del nuevo referido no válidos."];
+    }
+
+    try {
+        $pdo = getRailwayPdo();
+        $pdo->beginTransaction();
+
+        $st = $pdo->prepare("SELECT id,nombre FROM clientes WHERE id=? LIMIT 1 FOR UPDATE");
+        $st->execute([$referente_id]);
+        $referente = $st->fetch();
+        if (!$referente) throw new Exception("El referente indicado no existe.");
+
+        foreach (["referidos", "clientes_normales"] as $tabla) {
+            $chk = $pdo->prepare("SELECT id FROM ".$tabla." WHERE LOWER(TRIM(nombre))=LOWER(TRIM(?)) OR REPLACE(LOWER(TRIM(nombre)),' ','')=REPLACE(LOWER(TRIM(?)),' ','') LIMIT 1");
+            $chk->execute([$usuario,$usuario]);
+            if ($chk->fetch()) throw new Exception("Ese usuario ya existe en la base de datos. Debe usar /renovar.");
+        }
+
+        $telegram = $from_cliente["username"] ?? "";
+        $nota = "Alta de referido creada desde el bot. Chat ID: ".$chat_id_cliente.($telegram !== "" ? " · Telegram: @".$telegram : "");
+        $ins = $pdo->prepare("INSERT INTO referidos(cliente_id,nombre,estado,fecha_alta,fecha_caducidad,nota) VALUES(?,?,'Activo',CURDATE(),DATE_ADD(CURDATE(), INTERVAL ".$meses." MONTH),?)");
+        $ins->execute([$referente_id,$usuario,$nota]);
+        $id=(int)$pdo->lastInsertId();
+        $ver=$pdo->prepare("SELECT r.id,r.nombre,r.fecha_caducidad,r.estado,c.nombre referente_nombre FROM referidos r JOIN clientes c ON c.id=r.cliente_id WHERE r.id=? LIMIT 1");
+        $ver->execute([$id]);
+        $row=$ver->fetch();
+        if (!$row) throw new Exception("Se insertó el referido, pero no se pudo verificar.");
+        $pdo->commit();
+        return ["ok"=>true,"id"=>$id,"usuario"=>$row["nombre"],"nueva_caducidad"=>$row["fecha_caducidad"],"estado"=>$row["estado"],"referente_nombre"=>$row["referente_nombre"],"tipo_tabla"=>"referidos"];
+    } catch (Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+        return ["ok"=>false,"error"=>$e->getMessage()];
+    }
+}
 
 /* =========================
    CENTRO DE AYUDA / SOPORTE
@@ -3093,6 +3150,10 @@ if (isset($update["callback_query"])) {
             }
 
             $nuevo_data = ["usuario" => $usuario_pendiente];
+            if (!empty($states[$chat_id]["referir_context"]) && is_array($states[$chat_id]["referir_context"])) {
+                $nuevo_data = array_merge($nuevo_data, $states[$chat_id]["referir_context"]);
+                unset($states[$chat_id]["referir_context"]);
+            }
             guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
             editMessageText($chat_id, $message_id,
                 "🆕 CUENTA NUEVA MDPRIME
@@ -3111,7 +3172,7 @@ Primero debes elegir plan, pagar y enviar el comprobante.
 ━━━━━━━━━━━━━━━━━━
 
 Selecciona la duración:",
-                nuevoDuracionKeyboard()
+                nuevoDuracionKeyboard($nuevo_data)
             );
         } else {
             editMessageText($chat_id, $message_id, "✅ Usuario confirmado:
@@ -3260,7 +3321,7 @@ Tu usuario ha quedado vinculado correctamente.");
         $usuario = $pendiente["usuario"] ?? "Sin usuario";
         $meses = (int)($pendiente["meses"] ?? 0);
         $cliente_chat_id = $pendiente["chat_id_cliente"] ?? "";
-        $precio = renovarPrecioNormal($meses);
+        $precio = precioAltaDesdeData($pendiente, $meses);
         $from_cliente = $pendiente["telegram_from"] ?? [];
         $nombreTelegram = trim(($from_cliente["first_name"] ?? "") . " " . ($from_cliente["last_name"] ?? ""));
         $aliasTelegram = $from_cliente["username"] ?? "";
@@ -3275,16 +3336,18 @@ Tu usuario ha quedado vinculado correctamente.");
         }
 
         if ($aprobar) {
-            $resultado = aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente, $cliente_chat_id);
+            $resultado = (($pendiente["alta_tipo"] ?? "normal") === "referido")
+                ? aplicarNuevoReferidoRailway($usuario, $meses, (int)($pendiente["referente_id"] ?? 0), $from_cliente, $cliente_chat_id)
+                : aplicarNuevaCuentaRailway($usuario, $meses, $from_cliente, $cliente_chat_id);
 
             if (!empty($resultado["ok"])) {
                 borrarNuevoPendienteAdmin($state_file, $states, $nuevo_id);
                 $nueva = fechaBonita($resultado["nueva_caducidad"] ?? "");
 
-                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n👤 Nombre Telegram:\n".telegramHtml($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".telegramHtml($aliasTxt)."\n\n🔗 Abrir chat:\n".telegramHtml($linkTelegram)."\n\n🆔 Chat ID:\n<code>".telegramHtml($cliente_chat_id)."</code>\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".telegramHtml($nueva)."\n\n✅ Cuenta creada en clientes_normales como Activo.\n━━━━━━━━━━━━━━━━━━", null, "HTML");
+                editMessageText($chat_id, $message_id, "━━━━━━━━━━━━━━━━━━\n✅ ALTA APROBADA\n━━━━━━━━━━━━━━━━━━\n\n👤 Usuario creado:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n👤 Nombre Telegram:\n".telegramHtml($nombreTelegram !== "" ? $nombreTelegram : "No disponible")."\n\n📲 Alias Telegram:\n".telegramHtml($aliasTxt)."\n\n🔗 Abrir chat:\n".telegramHtml($linkTelegram)."\n\n🆔 Chat ID:\n<code>".telegramHtml($cliente_chat_id)."</code>\n\n📦 Plan contratado:\n".$meses." meses\n\n💶 Importe pagado:\n".$precio."€\n\n📅 Caducidad:\n".telegramHtml($nueva)."\n\n".(($pendiente["alta_tipo"] ?? "normal") === "referido" ? "✅ Referido vinculado a: ".telegramHtml($resultado["referente_nombre"] ?? ($pendiente["referente_nombre"] ?? "No disponible"))."." : "✅ Cuenta creada en clientes_normales como Activo.")."\n━━━━━━━━━━━━━━━━━━", null, "HTML");
 
                 if ($cliente_chat_id !== "") {
-                    sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\nTu cuenta nueva ya ha sido creada y activada.\n\n👤 Usuario MDPRIME:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".telegramHtml($nueva)."\n\n⭐ Gracias por confiar en MDPRIME.", true, "HTML");
+                    sendMessage($cliente_chat_id, "✅ Pago aprobado.\n\n".(($pendiente["alta_tipo"] ?? "normal") === "referido" ? "Tu cuenta ha sido creada y vinculada correctamente a tu referente." : "Tu cuenta nueva ya ha sido creada y activada.")."\n\n👤 Usuario MDPRIME:\n<code>".telegramHtml($usuario)."</code>\n\n📋 Pulsa sobre el usuario para copiarlo.\n\n🔐 Contraseña: se genera desde el panel correspondiente.\n📦 Plan contratado: ".$meses." meses\n💶 Importe pagado: ".$precio."€\n📅 Caducidad: ".telegramHtml($nueva)."\n\n⭐ Gracias por confiar en MDPRIME.", true, "HTML");
                 }
             } else {
                 editMessageText($chat_id, $message_id, "❌ NO SE PUDO CREAR LA CUENTA\n\n👤 Usuario:\n".$usuario."\n\nError:\n".($resultado["error"] ?? "Error desconocido")."\n\nNo se ha borrado la solicitud pendiente.");
@@ -3843,6 +3906,21 @@ if ($user_state === "confirmando_usuario_mdprime") {
     exit;
 }
 
+if ($user_state === "referir_usuario") {
+    $usuario_nuevo = preg_replace('/\s+/', ' ', trim(str_replace(["\r","\n","\t"], ' ', $text)));
+    if ($usuario_nuevo === "" || substr($usuario_nuevo,0,1) === "/") {
+        sendMessage($chat_id, "👤 Escribe el nombre del nuevo usuario que deseas añadir como referido.");
+        http_response_code(200); exit;
+    }
+    $existe = consultarClienteApi($usuario_nuevo);
+    if (!empty($existe["ok"])) {
+        sendMessage($chat_id, "⚠️ Ese usuario ya existe. Para esa cuenta debes usar /renovar.");
+        http_response_code(200); exit;
+    }
+    pedirConfirmacionNombreProceso($state_file, $states, $chat_id, $usuario_nuevo, "nuevo");
+    http_response_code(200); exit;
+}
+
 if ($user_state === "nuevo_usuario") {
 
     $usuario_nuevo = trim($text);
@@ -3981,7 +4059,10 @@ Descargar aplicaciones.
 Agenda deportiva actualizada.
 
 🆕 /nuevo
-Crear una cuenta nueva.
+Crear una cuenta nueva normal.
+
+👥 /referir
+Añadir una cuenta nueva a tu referente.
 
 🆘 /soporte
 Contactar con soporte si tienes dudas o problemas.
@@ -4165,6 +4246,30 @@ case "/renovar":
 
     break;
    
+    case "/referir":
+        if ($saved_usuario === "") {
+            sendMessage($chat_id, "⚠️ Primero vincula tu cuenta de referente con /micuenta o /cambiarusuario.");
+            break;
+        }
+        $infoRef = consultarClienteApi($saved_usuario);
+        if (empty($infoRef["ok"]) || ($infoRef["tipo"] ?? "") !== "referente" || empty($infoRef["cliente"]["id"])) {
+            sendMessage($chat_id, "❌ Este comando solo está disponible para Referentes VIP registrados.\n\nLa cuenta vinculada actualmente no figura como referente.");
+            break;
+        }
+        $nivelRef = renovarNivelKeyDesdeTexto($infoRef["nivel"]["actual"] ?? "");
+        if ($nivelRef === "") $nivelRef = "cobre";
+        if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+        $states[$chat_id]["mode"] = "referir_usuario";
+        $states[$chat_id]["referir_context"] = [
+            "alta_tipo" => "referido",
+            "referente_id" => (int)$infoRef["cliente"]["id"],
+            "referente_nombre" => $infoRef["cliente"]["nombre"],
+            "nivel_referente" => $nivelRef
+        ];
+        saveStates($state_file, $states);
+        sendMessage($chat_id, "👥 AÑADIR NUEVO REFERIDO\n\nReferente: ".$infoRef["cliente"]["nombre"]."\nNivel: ".renovarNivelTxt($nivelRef)."\n\nEscribe el nombre de la nueva cuenta que deseas vincular a este referente.\n\n⚠️ No se guardará hasta que el pago sea aprobado.");
+        break;
+
     case "/nuevo":
 
         setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
@@ -4343,6 +4448,7 @@ Usa:
 /agenda
 /renovar
 /nuevo
+/referir
 /soporte";
 
         sendMessage($chat_id, $msg);
