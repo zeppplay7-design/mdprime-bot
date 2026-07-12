@@ -961,13 +961,40 @@ function buscarReferidoDirectoSinJoinV25($pdo, $usuario) {
     }
 }
 
+function calcularEstadoRealPanel($registro, $campoFecha = "fecha_caducidad") {
+    // El estado del panel manda siempre. Una fecha futura nunca reactiva
+    // automáticamente una cuenta marcada como Inactiva.
+    $estadoPanel = trim((string)($registro["estado"] ?? ""));
+    $estadoNormalizado = mb_strtolower($estadoPanel, "UTF-8");
+
+    // Compatibilidad con posibles campos booleanos utilizados por el panel.
+    foreach (["activo", "is_active", "habilitado"] as $campoActivo) {
+        if (array_key_exists($campoActivo, $registro)) {
+            $valor = $registro[$campoActivo];
+            if ($valor === 0 || $valor === "0" || $valor === false || $valor === "false") {
+                return "Inactivo";
+            }
+        }
+    }
+
+    if ($estadoNormalizado !== "activo") {
+        return "Inactivo";
+    }
+
+    $caducidad = $registro[$campoFecha] ?? null;
+    if (!empty($caducidad) && $caducidad !== "0000-00-00") {
+        $timestamp = strtotime((string)$caducidad);
+        if ($timestamp !== false && $timestamp < strtotime(date("Y-m-d"))) {
+            return "Inactivo";
+        }
+    }
+
+    return "Activo";
+}
+
 function construirRespuestaReferido($referido) {
     $caducidad = $referido["fecha_caducidad"] ?? null;
-    $estado_real = "Inactivo";
-
-    if (($referido["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-        $estado_real = "Activo";
-    }
+    $estado_real = calcularEstadoRealPanel($referido);
 
     $dias = null;
     if ($caducidad) {
@@ -1000,11 +1027,7 @@ function construirRespuestaReferido($referido) {
 
 function construirRespuestaClienteNormal($normal) {
     $caducidad = $normal["fecha_caducidad"] ?? null;
-    $estado_real = "Inactivo";
-
-    if (($normal["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-        $estado_real = "Activo";
-    }
+    $estado_real = calcularEstadoRealPanel($normal);
 
     $dias = null;
     if ($caducidad) {
@@ -1289,10 +1312,9 @@ function consultarClienteApi($usuario) {
 
             foreach ($referidos_db as $ref) {
                 $caducidad = $ref["fecha_caducidad"] ?? null;
-                $estado_real = "Inactivo";
+                $estado_real = calcularEstadoRealPanel($ref);
 
-                if (($ref["estado"] ?? "") === "Activo" && (!$caducidad  || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-                    $estado_real = "Activo";
+                if ($estado_real === "Activo") {
                     $activos++;
 
                     if ($caducidad  && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
@@ -1597,10 +1619,9 @@ function construirRespuestaReferenteSesionV64($pdo, $cliente) {
 
     foreach ($referidos_db as $ref) {
         $caducidad = $ref["fecha_caducidad"] ?? null;
-        $estado_real = "Inactivo";
+        $estado_real = calcularEstadoRealPanel($ref);
 
-        if (($ref["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
-            $estado_real = "Activo";
+        if ($estado_real === "Activo") {
             $activos++;
             if ($caducidad && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
                 $proxima_caducidad = $caducidad;
