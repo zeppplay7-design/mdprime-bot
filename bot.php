@@ -3483,6 +3483,7 @@ Estos dispositivos no pueden instalar archivos APK de Android de forma directa."
 
 
 /* =========================
+   V62: MODO ADMINISTRADOR / USUARIO ACTIVO
    V60 PANEL INTERACTIVO REFERENTE
 ========================= */
 function tecladoPanelReferenteV60() {
@@ -3543,8 +3544,9 @@ function mostrarPanelReferenteV60($chat_id, $usuario, $editar_id = null) {
         return false;
     }
     $txt = textoPanelReferenteV60($data);
-    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelReferenteV60());
-    else sendInlineMessage($chat_id, $txt, tecladoPanelReferenteV60());
+    $kb = agregarBotonAdminV62(tecladoPanelReferenteV60(), $chat_id);
+    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, $kb);
+    else sendInlineMessage($chat_id, $txt, $kb);
     return true;
 }
 
@@ -3660,8 +3662,9 @@ function mostrarPanelClienteNormalV60($chat_id, $usuario, $editar_id = null) {
         return false;
     }
     $txt = textoPanelClienteNormalV60($data);
-    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelClienteNormalV60());
-    else sendInlineMessage($chat_id, $txt, tecladoPanelClienteNormalV60());
+    $kb = agregarBotonAdminV62(tecladoPanelClienteNormalV60(), $chat_id);
+    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, $kb);
+    else sendInlineMessage($chat_id, $txt, $kb);
     return true;
 }
 
@@ -3706,6 +3709,40 @@ function tecladoPanelReferidoV61() {
         [["text" => "🔄 Cambiar de cuenta", "callback_data" => "menu_identificate"]],
         [["text" => "🏠 Inicio", "callback_data" => "menu_inicio"]]
     ]];
+}
+
+function esAdministradorV62($chat_id) {
+    global $admin_id;
+    return (string)$chat_id === (string)$admin_id;
+}
+
+function agregarBotonAdminV62($keyboard, $chat_id) {
+    if (!esAdministradorV62($chat_id)) return $keyboard;
+    if (!isset($keyboard["inline_keyboard"]) || !is_array($keyboard["inline_keyboard"])) {
+        $keyboard["inline_keyboard"] = [];
+    }
+    // El administrador puede volver a su panel sin perder el usuario activo.
+    array_splice($keyboard["inline_keyboard"], max(0, count($keyboard["inline_keyboard"]) - 1), 0, [[
+        ["text" => "👑 Panel administrador", "callback_data" => "admin_abrir_panel"]
+    ]]);
+    return $keyboard;
+}
+
+function tecladoEleccionAdminV62($tipo, $usuario) {
+    $tipoTxt = $tipo === "normal" ? "Cliente normal" : ($tipo === "referente" ? "Referente VIP" : "Referido");
+    return ["inline_keyboard" => [
+        [["text" => "👤 Entrar como este usuario", "callback_data" => "admin_entrar_usuario"]],
+        [["text" => "👑 Abrir panel administrador", "callback_data" => "admin_abrir_panel"]],
+        [["text" => "🔄 Identificar otra cuenta", "callback_data" => "menu_identificate"]]
+    ]];
+}
+
+function textoEleccionAdminV62($data, $usuario) {
+    $tipo = $data["tipo"] ?? "";
+    $tipoTxt = $tipo === "normal" ? "Cliente normal" : ($tipo === "referente" ? "Referente VIP" : "Referido");
+    return "✅ Usuario confirmado:\n".$usuario."\n\n".
+           "🏷️ Tipo detectado: ".$tipoTxt."\n\n".
+           "Eres administrador. Elige cómo deseas entrar:";
 }
 
 function tecladoPanelAdminV61() {
@@ -3810,14 +3847,19 @@ function adminTextoConfiguracionV61() {
 }
 
 function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
-    global $admin_id;
-    if ((string)$chat_id === (string)$admin_id) {
+    $esAdmin = esAdministradorV62($chat_id);
+    $usuario = getSavedUsuario($states, $chat_id);
+    $vista = (isset($states[$chat_id]) && is_array($states[$chat_id])) ? ($states[$chat_id]["vista_actual"] ?? "") : "";
+
+    // El panel administrativo solo se fuerza cuando el administrador lo ha elegido
+    // o todavía no tiene un usuario activo.
+    if ($esAdmin && ($vista === "admin" || $usuario === "")) {
         $txt = "👑 PANEL DE ADMINISTRACIÓN MDPRIME\n\nSelecciona una opción:";
         if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelAdminV61());
         else sendInlineMessage($chat_id, $txt, tecladoPanelAdminV61());
         return;
     }
-    $usuario = getSavedUsuario($states, $chat_id);
+
     if ($usuario === "") {
         $txt = "🔥 BIENVENIDO A MDPRIME\n\nPara acceder a tu menú, identifícate una sola vez. El bot recordará tu cuenta.";
         $kb = ["inline_keyboard" => [
@@ -3829,15 +3871,21 @@ function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
         if ($editar_id) editMessageText($chat_id, $editar_id, $txt, $kb); else sendInlineMessage($chat_id, $txt, $kb);
         return;
     }
+
     $data = consultarClienteApi($usuario);
     if (empty($data["ok"])) {
-        unset($states[$chat_id]["usuario_mdprime"]); saveStates($GLOBALS["state_file"], $states);
-        mostrarMenuPrincipalV61($chat_id, $states, $editar_id); return;
+        unset($states[$chat_id]["usuario_mdprime"], $states[$chat_id]["vista_actual"]);
+        saveStates($GLOBALS["state_file"], $states);
+        mostrarMenuPrincipalV61($chat_id, $states, $editar_id);
+        return;
     }
+
     if (($data["tipo"] ?? "") === "referente") { mostrarPanelReferenteV60($chat_id, $usuario, $editar_id); return; }
     if (($data["tipo"] ?? "") === "normal") { mostrarPanelClienteNormalV60($chat_id, $usuario, $editar_id); return; }
+
     $txt = "👤 PANEL DE REFERIDO MDPRIME\n\n🙋 Usuario: ".($data["referido"]["nombre"] ?? $usuario)."\n".estadoIcono($data["referido"]["estado"] ?? "Inactivo")." Estado: ".($data["referido"]["estado"] ?? "Sin estado")."\n📅 Caducidad: ".($data["referido"]["caducidad"] ?? "Sin fecha")."\n\nSelecciona una opción:";
-    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelReferidoV61()); else sendInlineMessage($chat_id, $txt, tecladoPanelReferidoV61());
+    $kb = agregarBotonAdminV62(tecladoPanelReferidoV61(), $chat_id);
+    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, $kb); else sendInlineMessage($chat_id, $txt, $kb);
 }
 
 /* =========================
@@ -3875,6 +3923,22 @@ if (isset($update["callback_query"])) {
     $states = loadStates($state_file);
 
     if ($callback_data === "menu_inicio") { mostrarMenuPrincipalV61($chat_id, $states, $message_id); http_response_code(200); exit; }
+    if ($callback_data === "admin_abrir_panel") {
+        if (!esAdministradorV62($chat_id)) { answerCallbackQuery($callback_id, "No autorizado."); http_response_code(200); exit; }
+        if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+        $states[$chat_id]["vista_actual"] = "admin";
+        saveStates($state_file, $states);
+        mostrarMenuPrincipalV61($chat_id, $states, $message_id);
+        http_response_code(200); exit;
+    }
+    if ($callback_data === "admin_entrar_usuario") {
+        if (!esAdministradorV62($chat_id)) { answerCallbackQuery($callback_id, "No autorizado."); http_response_code(200); exit; }
+        if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+        $states[$chat_id]["vista_actual"] = "usuario";
+        saveStates($state_file, $states);
+        mostrarMenuPrincipalV61($chat_id, $states, $message_id);
+        http_response_code(200); exit;
+    }
     if ($callback_data === "menu_identificate") {
         setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", "/micuenta");
         editMessageText($chat_id, $message_id, "👤 IDENTIFÍCATE\n\nEscribe tu usuario MDPRIME. El bot lo recordará para las próximas veces.");
@@ -3900,7 +3964,7 @@ Cargando programación…",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callb
         elseif ($callback_data === "adminpanel_estadisticas") $txt = adminTextoEstadisticasV61($states);
         elseif ($callback_data === "adminpanel_configuracion") $txt = adminTextoConfiguracionV61();
         else $txt = "⚠️ Sección no disponible.";
-        editMessageText($chat_id,$message_id,$txt,["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]);
+        editMessageText($chat_id,$message_id,$txt,["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"admin_abrir_panel"]]]]);
         http_response_code(200); exit;
     }
 
@@ -4481,19 +4545,28 @@ Selecciona la duración:";
         unset($states[$chat_id]["mode"], $states[$chat_id]["usuario_pendiente"]);
         saveStates($state_file, $states);
 
-        sendMessage($chat_id, "✅ Usuario confirmado:
+        if (!empty($data["ok"]) && esAdministradorV62($chat_id)) {
+            $states[$chat_id]["vista_actual"] = "eleccion";
+            saveStates($state_file, $states);
+            sendInlineMessage($chat_id, textoEleccionAdminV62($data, $usuario_confirmado), tecladoEleccionAdminV62($data["tipo"] ?? "", $usuario_confirmado));
+        } else {
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+            $states[$chat_id]["vista_actual"] = "usuario";
+            saveStates($state_file, $states);
+            sendMessage($chat_id, "✅ Usuario confirmado:
 ".$usuario_confirmado."
 
 Tu usuario ha quedado vinculado correctamente.");
 
-        if (!empty($data["ok"])) {
-            if ($pending === "/caducidad") {
-                sendLongMessage($chat_id, formatCaducidad($data));
-            } elseif ($pending === "/misreferidos" && ($data["tipo"] ?? "") === "referente") {
-                [$txt,$kb] = listaReferidosV60($data, 0, false);
-                sendInlineMessage($chat_id, $txt, $kb);
-            } else {
-                mostrarMenuPrincipalV61($chat_id, $states);
+            if (!empty($data["ok"])) {
+                if ($pending === "/caducidad") {
+                    sendLongMessage($chat_id, formatCaducidad($data));
+                } elseif ($pending === "/misreferidos" && ($data["tipo"] ?? "") === "referente") {
+                    [$txt,$kb] = listaReferidosV60($data, 0, false);
+                    sendInlineMessage($chat_id, $txt, $kb);
+                } else {
+                    mostrarMenuPrincipalV61($chat_id, $states);
+                }
             }
         }
 
