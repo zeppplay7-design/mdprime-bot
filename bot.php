@@ -1224,10 +1224,26 @@ function consultarClienteApi($usuario) {
                 WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
                    OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
                 ORDER BY id DESC
-                LIMIT 1
             ");
             $stmtRefPrimero->execute([$usuario, $usuario]);
-            $referidoPrimero = $stmtRefPrimero->fetch();
+            $coincidenciasReferido = $stmtRefPrimero->fetchAll();
+            $referidoPrimero = null;
+
+            if (!empty($coincidenciasReferido)) {
+                // Si hay duplicados con estados contradictorios, priorizar el estado
+                // Inactivo para no mostrar como activa una cuenta bloqueada en el panel.
+                foreach ($coincidenciasReferido as $filaCoincidente) {
+                    if (calcularEstadoRealPanel($filaCoincidente) === "Inactivo") {
+                        $referidoPrimero = $filaCoincidente;
+                        break;
+                    }
+                }
+
+                // Si todas las coincidencias están activas, usar el registro más reciente.
+                if ($referidoPrimero === null) {
+                    $referidoPrimero = $coincidenciasReferido[0];
+                }
+            }
 
             if ($referidoPrimero) {
                 $referidoPrimero["referente_id"] = (int)($referidoPrimero["cliente_id"] ?? 0);
@@ -1718,9 +1734,19 @@ function consultarClienteParaSesionV64($usuario) {
         if ($cliente) return construirRespuestaReferenteSesionV64($pdo, $cliente);
 
         // 2. REFERIDO: solo si no es referente.
-        $stmt = $pdo->prepare("\n            SELECT * FROM referidos\n            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))\n               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')\n            ORDER BY id DESC\n            LIMIT 1\n        ");
+        $stmt = $pdo->prepare("\n            SELECT * FROM referidos\n            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))\n               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')\n            ORDER BY id DESC\n        ");
         $stmt->execute([$usuario, $usuario]);
-        $referido = $stmt->fetch();
+        $coincidencias = $stmt->fetchAll();
+        $referido = null;
+        if (!empty($coincidencias)) {
+            foreach ($coincidencias as $filaCoincidente) {
+                if (calcularEstadoRealPanel($filaCoincidente) === "Inactivo") {
+                    $referido = $filaCoincidente;
+                    break;
+                }
+            }
+            if ($referido === null) $referido = $coincidencias[0];
+        }
         if ($referido) {
             $referido["referente_id"] = (int)($referido["cliente_id"] ?? 0);
             $referido["referente_nombre"] = "No disponible";
