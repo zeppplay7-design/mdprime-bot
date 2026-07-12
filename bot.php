@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V60-PANEL-REFERENTE-20260712";
+$bot_version = "MDPRIME-BOT-V61-MENUS-POR-ROL-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -125,39 +125,17 @@ function telegramHtml($text) {
 function configurarComandosTelegram() {
     $commands = [
         ["command" => "start", "description" => "Abrir el menú principal"],
-        ["command" => "cancelar", "description" => "Cancelar el proceso actual"],
-        ["command" => "micuenta", "description" => "Consultar mi cuenta"],
-        ["command" => "caducidad", "description" => "Consultar caducidad"],
-        ["command" => "misreferidos", "description" => "Ver mis referidos"],
-        ["command" => "planes", "description" => "Ver planes normales"],
-        ["command" => "referidos", "description" => "Ver tarifas Referidos VIP"],
-        ["command" => "queesreferidos", "description" => "Cómo funciona Referidos VIP"],
-        ["command" => "renovar", "description" => "Solicitar una renovación"],
-        ["command" => "comorenovar", "description" => "Cómo renovar paso a paso"],
-        ["command" => "nuevo", "description" => "Crear una cuenta normal"],
-        ["command" => "referir", "description" => "Unir una cuenta a un referente"],
-        ["command" => "multicuenta", "description" => "Contratar 2 o 3 cuentas"],
-        ["command" => "apps", "description" => "Descargar aplicaciones"],
-        ["command" => "agenda", "description" => "Ver la agenda deportiva"],
-        ["command" => "soporte", "description" => "Contactar con soporte"],
-        ["command" => "cambiarusuario", "description" => "Cambiar usuario vinculado"]
+        ["command" => "identificate", "description" => "Identificar o cambiar cuenta"],
+        ["command" => "cancelar", "description" => "Cancelar el proceso actual"]
     ];
 
-    // Eliminar configuraciones antiguas que puedan ocultar comandos según idioma.
-    telegramRequest("deleteMyCommands", [
-        "scope" => json_encode(["type" => "default"])
-    ]);
-    telegramRequest("deleteMyCommands", [
-        "scope" => json_encode(["type" => "all_private_chats"])
-    ]);
+    telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "default"])]);
+    telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "all_private_chats"])]);
 
-    // Registrar un menú global sin limitarlo al idioma del dispositivo.
     $global = telegramRequest("setMyCommands", [
         "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
         "scope" => json_encode(["type" => "default"])
     ]);
-
-    // Registrar también el menú para todos los chats privados.
     $privado = telegramRequest("setMyCommands", [
         "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
         "scope" => json_encode(["type" => "all_private_chats"])
@@ -182,39 +160,9 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     if ($keyboard) {
         $data["reply_markup"] = json_encode([
             "keyboard" => [
-                [
-                    ["text" => "/start"],
-                    ["text" => "/cancelar"]
-                ],
-                [
-                    ["text" => "/micuenta"],
-                    ["text" => "/caducidad"]
-                ],
-                [
-                    ["text" => "/misreferidos"],
-                    ["text" => "/planes"]
-                ],
-                [
-                    ["text" => "/referidos"],
-                    ["text" => "/queesreferidos"]
-                ],
-                [
-                    ["text" => "/renovar"],
-                    ["text" => "/comorenovar"]
-                ],
-                [
-                    ["text" => "/apps"],
-                    ["text" => "/agenda"]
-                ],
-                [
-                    ["text" => "/nuevo"],
-                    ["text" => "/referir"],
-                    ["text" => "/multicuenta"]
-                ],
-                [
-                    ["text" => "/soporte"],
-                    ["text" => "/cambiarusuario"]
-                ]
+                [["text" => "/start"]],
+                [["text" => "/identificate"]],
+                [["text" => "/cancelar"]]
             ],
             "resize_keyboard" => true,
             "one_time_keyboard" => false
@@ -3539,10 +3487,17 @@ Estos dispositivos no pueden instalar archivos APK de Android de forma directa."
 ========================= */
 function tecladoPanelReferenteV60() {
     return ["inline_keyboard" => [
-        [["text" => "👤 Mi cuenta", "callback_data" => "refpanel_cuenta"], ["text" => "👥 Mis referidos", "callback_data" => "refpanel_lista_0"]],
-        [["text" => "📊 Estadísticas", "callback_data" => "refpanel_stats"], ["text" => "💶 Mis tarifas", "callback_data" => "refpanel_tarifas"]],
-        [["text" => "➕ Añadir referido", "callback_data" => "refpanel_anadir"], ["text" => "🔄 Renovar referido", "callback_data" => "refpanel_renovar_0"]],
-        [["text" => "🏠 Inicio", "callback_data" => "refpanel_inicio"]]
+        [["text" => "👤 Mi cuenta", "callback_data" => "refpanel_cuenta"]],
+        [["text" => "👥 Mis referidos", "callback_data" => "refpanel_lista_0"]],
+        [["text" => "📊 Estadísticas", "callback_data" => "refpanel_stats"]],
+        [["text" => "💰 Mis tarifas", "callback_data" => "refpanel_tarifas"]],
+        [["text" => "➕ Añadir referido", "callback_data" => "refpanel_anadir"]],
+        [["text" => "🔄 Renovar referido", "callback_data" => "refpanel_renovar_0"]],
+        [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
+        [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
+        [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]],
+        [["text" => "🔄 Cambiar de cuenta", "callback_data" => "menu_identificate"]],
+        [["text" => "🏠 Inicio", "callback_data" => "menu_inicio"]]
     ]];
 }
 
@@ -3656,10 +3611,14 @@ function textoFichaReferidoV60($ref) {
 ========================= */
 function tecladoPanelClienteNormalV60() {
     return ["inline_keyboard" => [
-        [["text" => "👤 Mi cuenta", "callback_data" => "normalpanel_cuenta"], ["text" => "🔄 Renovar", "callback_data" => "normalpanel_renovar"]],
+        [["text" => "👤 Mi cuenta", "callback_data" => "normalpanel_cuenta"]],
+        [["text" => "🔄 Renovar", "callback_data" => "normalpanel_renovar"]],
         [["text" => "👥 Unirme a un referente", "callback_data" => "normalpanel_unir"]],
-        [["text" => "📲 Apps", "callback_data" => "normalpanel_apps"], ["text" => "🆘 Soporte", "callback_data" => "normalpanel_soporte"]],
-        [["text" => "🏠 Inicio", "callback_data" => "normalpanel_inicio"]]
+        [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
+        [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
+        [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]],
+        [["text" => "🔄 Cambiar de cuenta", "callback_data" => "menu_identificate"]],
+        [["text" => "🏠 Inicio", "callback_data" => "menu_inicio"]]
     ]];
 }
 
@@ -3706,6 +3665,92 @@ function mostrarPanelClienteNormalV60($chat_id, $usuario, $editar_id = null) {
     return true;
 }
 
+
+function enviarAgendaV61($chat_id) {
+    $json = getAgendaJsonCache();
+    if (!$json) { sendMessage($chat_id, "❌ No se pudo cargar la agenda deportiva."); return; }
+    $agenda = json_decode($json, true);
+    if (empty($agenda["events"])) { sendMessage($chat_id, "⚠️ No hay eventos disponibles."); return; }
+    $primerDia = $agenda["events"][0]["fecha"] ?? "Hoy";
+    $eventos = array_values(array_filter($agenda["events"], function($e) use ($primerDia) { return ($e["fecha"] ?? "") === $primerDia; }));
+    $msg = "🏆 AGENDA DEPORTIVA MDPRIME
+📅 ".$primerDia."
+🎯 Eventos: ".count($eventos)."
+
+";
+    foreach ($eventos as $evento) {
+        $msg .= "🕒 ".($evento["hora"] ?? "--:--")."
+";
+        $msg .= "🏅 ".($evento["deporte"] ?? "Deporte")."
+";
+        if (!empty($evento["competicion"])) $msg .= "🏆 ".$evento["competicion"]."
+";
+        $msg .= "📌 ".($evento["evento"] ?? "Evento")."
+";
+        if (!empty($evento["canal"])) $msg .= "📺 ".$evento["canal"]."
+";
+        $msg .= "━━━━━━━━━━━━━━
+";
+        if (mb_strlen($msg, "UTF-8") > 3500) break;
+    }
+    sendLongMessage($chat_id, $msg);
+}
+
+function tecladoPanelReferidoV61() {
+    return ["inline_keyboard" => [
+        [["text" => "👤 Mi cuenta", "callback_data" => "referidopanel_cuenta"]],
+        [["text" => "🔄 Renovar", "callback_data" => "referidopanel_renovar"]],
+        [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
+        [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
+        [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]],
+        [["text" => "🔄 Cambiar de cuenta", "callback_data" => "menu_identificate"]],
+        [["text" => "🏠 Inicio", "callback_data" => "menu_inicio"]]
+    ]];
+}
+
+function tecladoPanelAdminV61() {
+    return ["inline_keyboard" => [
+        [["text" => "📩 Solicitudes", "callback_data" => "adminpanel_solicitudes"]],
+        [["text" => "💳 Renovaciones", "callback_data" => "adminpanel_renovaciones"]],
+        [["text" => "👥 Referentes", "callback_data" => "adminpanel_referentes"]],
+        [["text" => "👤 Clientes", "callback_data" => "adminpanel_clientes"]],
+        [["text" => "📊 Estadísticas", "callback_data" => "adminpanel_estadisticas"]],
+        [["text" => "⚙️ Configuración", "callback_data" => "adminpanel_configuracion"]],
+        [["text" => "🏠 Inicio", "callback_data" => "menu_inicio"]]
+    ]];
+}
+
+function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
+    global $admin_id;
+    if ((string)$chat_id === (string)$admin_id) {
+        $txt = "👑 PANEL DE ADMINISTRACIÓN MDPRIME\n\nSelecciona una opción:";
+        if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelAdminV61());
+        else sendInlineMessage($chat_id, $txt, tecladoPanelAdminV61());
+        return;
+    }
+    $usuario = getSavedUsuario($states, $chat_id);
+    if ($usuario === "") {
+        $txt = "🔥 BIENVENIDO A MDPRIME\n\nPara acceder a tu menú, identifícate una sola vez. El bot recordará tu cuenta.";
+        $kb = ["inline_keyboard" => [
+            [["text" => "👤 Identificarme", "callback_data" => "menu_identificate"]],
+            [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
+            [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
+            [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]]
+        ]];
+        if ($editar_id) editMessageText($chat_id, $editar_id, $txt, $kb); else sendInlineMessage($chat_id, $txt, $kb);
+        return;
+    }
+    $data = consultarClienteApi($usuario);
+    if (empty($data["ok"])) {
+        unset($states[$chat_id]["usuario_mdprime"]); saveStates($GLOBALS["state_file"], $states);
+        mostrarMenuPrincipalV61($chat_id, $states, $editar_id); return;
+    }
+    if (($data["tipo"] ?? "") === "referente") { mostrarPanelReferenteV60($chat_id, $usuario, $editar_id); return; }
+    if (($data["tipo"] ?? "") === "normal") { mostrarPanelClienteNormalV60($chat_id, $usuario, $editar_id); return; }
+    $txt = "👤 PANEL DE REFERIDO MDPRIME\n\n🙋 Usuario: ".($data["referido"]["nombre"] ?? $usuario)."\n".estadoIcono($data["referido"]["estado"] ?? "Inactivo")." Estado: ".($data["referido"]["estado"] ?? "Sin estado")."\n📅 Caducidad: ".($data["referido"]["caducidad"] ?? "Sin fecha")."\n\nSelecciona una opción:";
+    if ($editar_id) editMessageText($chat_id, $editar_id, $txt, tecladoPanelReferidoV61()); else sendInlineMessage($chat_id, $txt, tecladoPanelReferidoV61());
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -3739,6 +3784,30 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+
+    if ($callback_data === "menu_inicio") { mostrarMenuPrincipalV61($chat_id, $states, $message_id); http_response_code(200); exit; }
+    if ($callback_data === "menu_identificate") {
+        setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", "/micuenta");
+        editMessageText($chat_id, $message_id, "👤 IDENTIFÍCATE\n\nEscribe tu usuario MDPRIME. El bot lo recordará para las próximas veces.");
+        http_response_code(200); exit;
+    }
+    if ($callback_data === "menu_apps") { editMessageText($chat_id,$message_id,"📲 APPS POR DOWNLOADER\n\n🔥 V9 → 6713896\n📺 OTT → 7669716\n⚡ V8 → 6541023",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); http_response_code(200); exit; }
+    if ($callback_data === "menu_agenda") { editMessageText($chat_id,$message_id,"⚽ AGENDA DEPORTIVA
+
+Cargando programación…",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); enviarAgendaV61($chat_id); http_response_code(200); exit; }
+    if ($callback_data === "menu_soporte") { setUserMode($state_file,$states,$chat_id,"soporte"); editMessageText($chat_id,$message_id,"💬 SOPORTE\n\nEscribe tu consulta y será enviada a administración."); http_response_code(200); exit; }
+    if (strpos($callback_data,"referidopanel_")===0) {
+        $usuario=getSavedUsuario($states,$chat_id); $data=consultarClienteApi($usuario);
+        if ($callback_data==="referidopanel_cuenta") { editMessageText($chat_id,$message_id,formatMiCuenta($data),["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); }
+        elseif ($callback_data==="referidopanel_renovar") { pedirConfirmacionNombreProceso($state_file,$states,$chat_id,$usuario,"renovar"); }
+        http_response_code(200); exit;
+    }
+    if (strpos($callback_data,"adminpanel_")===0) {
+        if ((string)$chat_id !== (string)$admin_id) { http_response_code(200); exit; }
+        $titulos=["adminpanel_solicitudes"=>"📩 SOLICITUDES","adminpanel_renovaciones"=>"💳 RENOVACIONES","adminpanel_referentes"=>"👥 REFERENTES","adminpanel_clientes"=>"👤 CLIENTES","adminpanel_estadisticas"=>"📊 ESTADÍSTICAS","adminpanel_configuracion"=>"⚙️ CONFIGURACIÓN"];
+        editMessageText($chat_id,$message_id,($titulos[$callback_data]??"ADMINISTRACIÓN")."\n\nLas gestiones y avisos de esta sección seguirán llegando al chat del administrador.",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]);
+        http_response_code(200); exit;
+    }
 
     if (strpos($callback_data, "normalpanel_") === 0) {
         $usuario = getSavedUsuario($states, $chat_id);
@@ -4328,14 +4397,8 @@ Tu usuario ha quedado vinculado correctamente.");
             } elseif ($pending === "/misreferidos" && ($data["tipo"] ?? "") === "referente") {
                 [$txt,$kb] = listaReferidosV60($data, 0, false);
                 sendInlineMessage($chat_id, $txt, $kb);
-            } elseif (($data["tipo"] ?? "") === "referente") {
-                sendLongMessage($chat_id, formatMiCuenta($data));
-                sendInlineMessage($chat_id, "👑 Accede a tu panel de referente:", tecladoPanelReferenteV60());
-            } elseif (($data["tipo"] ?? "") === "normal") {
-                sendLongMessage($chat_id, formatMiCuenta($data));
-                sendInlineMessage($chat_id, "👤 Accede a tu panel de cliente:", tecladoPanelClienteNormalV60());
             } else {
-                sendLongMessage($chat_id, formatMiCuenta($data));
+                mostrarMenuPrincipalV61($chat_id, $states);
             }
         }
 
@@ -4810,7 +4873,7 @@ $message_id = $update["message"]["message_id"] ?? null;
 
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
-$private_group_commands = ["/micuenta", "/caducidad", "/misreferidos", "/cambiarusuario", "/renovar", "/nuevo", "/soporte"];
+$private_group_commands = ["/identificate"];
 
 if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
     if ($message_id) {
@@ -5380,77 +5443,9 @@ Has vuelto al menú principal.");
         break;
 
     case "/start":
-
-        // Cancela cualquier proceso incompleto, pero conserva la cuenta MDPRIME vinculada.
         resetUserProcessState($state_file, $states, $chat_id);
-
-        // Actualiza el menú de comandos de Telegram para que aparezcan
-        // /referir y /multicuenta al pulsar el botón de comandos.
         configurarComandosTelegram();
-
-        $msg = "🔥 BIENVENIDO A MDPRIME 🔥
-
-📺 BOT AUTOMATIZADO
-
-━━━━━━━━━━━━━━━━━━
-
-📋 MENÚ PRINCIPAL
-
-🏠 /start
-Volver al menú principal y cancelar cualquier proceso abierto.
-
-❌ /cancelar
-Cancelar el proceso actual sin desvincular tu cuenta.
-
-👤 /micuenta
-Consultar tu cuenta MDPRIME.
-
-📅 /caducidad
-Ver la caducidad de tu cuenta.
-
-👥 /misreferidos
-Ver tus referidos activos e inactivos.
-
-💎 /planes
-Ver planes normales.
-
-🏆 /referidos
-Consultar tarifas del programa Referidos VIP.
-
-❓ /queesreferidos
-Explicación del programa de referidos.
-
-🔄 /renovar
-Solicitar una renovación.
-
-💳 /comorenovar
-Instrucciones para renovar paso a paso.
-
-📲 /apps
-Descargar aplicaciones.
-
-🏅 /agenda
-Agenda deportiva actualizada.
-
-🆕 /nuevo
-Crear una cuenta nueva normal.
-
-👥 /referir
-Crear una cuenta nueva y unirla al grupo de tu referente.
-
-💎 /multicuenta
-Contratar 2 o 3 cuentas con un único pago.
-
-🆘 /soporte
-Contactar con soporte si tienes dudas o problemas.
-
-━━━━━━━━━━━━━━━━━━
-
-⭐ Gracias por confiar en MDPRIME.";
-
-        $msg = mdprimeSesionActivaTexto($chat_id, $states).$msg;
-
-        sendMessage($chat_id, $msg);
+        mostrarMenuPrincipalV61($chat_id, $states);
         break;
 
     case "/planes":
@@ -5568,11 +5563,12 @@ Canelobel");
 
         break;
 
+    case "/identificate":
     case "/cambiarusuario":
 
         setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", "/micuenta");
 
-        sendMessage($chat_id, "🔄 CAMBIAR USUARIO
+        sendMessage($chat_id, "👤 IDENTIFÍCATE
 
 Introduce el nuevo usuario MDPRIME que quieres guardar.");
 
