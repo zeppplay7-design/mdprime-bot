@@ -625,6 +625,37 @@ function sendInlineMessage($chat_id, $text, $reply_markup = null) {
     return telegramRequest("sendMessage", $data);
 }
 
+function enviarAvisoAccionPrivadaGrupo($chat_id, $message_id = null) {
+    global $bot_link;
+
+    if ($message_id) {
+        deleteMessage($chat_id, $message_id);
+    }
+
+    $texto = "🔒 ACCIÓN PRIVADA
+
+Por motivos de seguridad y protección de tus datos, esta acción solo está disponible en el chat privado del bot.
+
+Pulsa el botón para continuar.";
+
+    $teclado = [
+        "inline_keyboard" => [
+            [[
+                "text" => "🔒 Abrir MDPRIME Bot",
+                "url" => $bot_link
+            ]]
+        ]
+    ];
+
+    $sent = sendInlineMessage($chat_id, $texto, $teclado);
+    $aviso_id = $sent["result"]["message_id"] ?? null;
+
+    if ($aviso_id) {
+        sleep(8);
+        deleteMessage($chat_id, $aviso_id);
+    }
+}
+
 function sendLongMessage($chat_id, $text, $keyboard = true) {
     $max = 3900;
 
@@ -4296,6 +4327,32 @@ if (isset($update["callback_query"])) {
     answerCallbackQuery($callback_id);
 
     $states = loadStates($state_file);
+    $callback_chat_type = $callback_message["chat"]["type"] ?? "private";
+
+    $callbacks_privados_grupo = [
+        "menu_identificate",
+        "menu_nuevo_usuario",
+        "normalpanel_cuenta",
+        "normalpanel_renovar",
+        "referidopanel_cuenta",
+        "referidopanel_renovar",
+        "sup_contactar"
+    ];
+
+    $callback_es_privado = in_array($callback_data, $callbacks_privados_grupo, true)
+        || strpos($callback_data, "confirm_usuario_") === 0
+        || strpos($callback_data, "confirmar_renovar_") === 0
+        || strpos($callback_data, "confirmar_nuevo_") === 0
+        || strpos($callback_data, "ren_") === 0
+        || strpos($callback_data, "nuevo_") === 0
+        || strpos($callback_data, "multi_") === 0
+        || strpos($callback_data, "referir_") === 0;
+
+    if ($callback_chat_type !== "private" && $callback_es_privado) {
+        enviarAvisoAccionPrivadaGrupo($chat_id, null);
+        http_response_code(200);
+        exit;
+    }
 
     if ($callback_data === "nav_atras") {
         clearUserMode($state_file, $states, $chat_id);
@@ -5469,38 +5526,25 @@ $message_id = $update["message"]["message_id"] ?? null;
 
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
-$private_group_commands = ["/identificate"];
+$private_group_commands = [
+    "/identificate",
+    "/cambiarusuario",
+    "/micuenta",
+    "/caducidad",
+    "/misreferidos",
+    "/renovar",
+    "/nuevo",
+    "/pagar",
+    "/multicuenta",
+    "/multicuentas",
+    "/referir"
+];
 
 if (in_array($command, $private_group_commands, true) && $chat_type !== "private") {
-    if ($message_id) {
-        deleteMessage($chat_id, $message_id);
-    }
-
-    $aviso = "🔒 Esta consulta es privada.\n\nPara proteger tus datos, abre el bot en privado y usa el comando allí.";
-
-    $keyboard_inline = [
-        "inline_keyboard" => [
-            [
-                [
-                    "text" => "🔒 Abrir MDPRIME Bot",
-                    "url" => $bot_link
-                ]
-            ]
-        ]
-    ];
-
-    $sent = sendInlineMessage($chat_id, $aviso, $keyboard_inline);
-    $aviso_id = $sent["result"]["message_id"] ?? null;
-
-    if ($aviso_id) {
-        sleep(8);
-        deleteMessage($chat_id, $aviso_id);
-    }
-
+    enviarAvisoAccionPrivadaGrupo($chat_id, $message_id);
     http_response_code(200);
     exit;
 }
-
 
 
 $states = loadStates($state_file);
