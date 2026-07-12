@@ -123,28 +123,52 @@ function telegramHtml($text) {
 }
 
 function configurarComandosTelegram() {
-    $commands = [
+    // Menú completo únicamente en el chat privado del bot.
+    $commands_privado = [
         ["command" => "start", "description" => "🏠 Abrir MDPRIME"],
         ["command" => "identificate", "description" => "👤 Identificar cuenta"],
+        ["command" => "micuenta", "description" => "👤 Mi cuenta"],
+        ["command" => "caducidad", "description" => "📅 Consultar caducidad"],
+        ["command" => "misreferidos", "description" => "👥 Mis referidos"],
+        ["command" => "renovar", "description" => "🔄 Renovar cuenta"],
         ["command" => "nuevo", "description" => "🆕 Crear nuevo usuario"],
+        ["command" => "multicuenta", "description" => "💎 Plan multicuenta"],
+        ["command" => "referir", "description" => "🤝 Unirme a un referente"],
+        ["command" => "planes", "description" => "💶 Planes premium"],
+        ["command" => "referidos", "description" => "🏆 Referidos VIP"],
+        ["command" => "agenda", "description" => "🏆 Agenda deportiva"],
+        ["command" => "apps", "description" => "📲 Aplicaciones"],
+        ["command" => "soporte", "description" => "🆘 Soporte"],
         ["command" => "cancelar", "description" => "❌ Cancelar proceso"]
+    ];
+
+    // En grupos solo se muestran estas tres opciones públicas.
+    $commands_grupo = [
+        ["command" => "agenda", "description" => "🏆 Agenda deportiva"],
+        ["command" => "apps", "description" => "📲 Aplicaciones"],
+        ["command" => "soporte", "description" => "🆘 Soporte"]
     ];
 
     telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "default"])]);
     telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "all_private_chats"])]);
+    telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "all_group_chats"])]);
 
     $global = telegramRequest("setMyCommands", [
-        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
+        "commands" => json_encode($commands_privado, JSON_UNESCAPED_UNICODE),
         "scope" => json_encode(["type" => "default"])
     ]);
     $privado = telegramRequest("setMyCommands", [
-        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
+        "commands" => json_encode($commands_privado, JSON_UNESCAPED_UNICODE),
         "scope" => json_encode(["type" => "all_private_chats"])
     ]);
+    $grupos = telegramRequest("setMyCommands", [
+        "commands" => json_encode($commands_grupo, JSON_UNESCAPED_UNICODE),
+        "scope" => json_encode(["type" => "all_group_chats"])
+    ]);
 
-    return (!empty($global["ok"]) || !empty($privado["ok"]))
-        ? ["ok" => true, "global" => $global, "privado" => $privado]
-        : ["ok" => false, "global" => $global, "privado" => $privado];
+    return (!empty($privado["ok"]) && !empty($grupos["ok"]))
+        ? ["ok" => true, "global" => $global, "privado" => $privado, "grupos" => $grupos]
+        : ["ok" => false, "global" => $global, "privado" => $privado, "grupos" => $grupos];
 }
 
 function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
@@ -5527,6 +5551,7 @@ $message_id = $update["message"]["message_id"] ?? null;
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
 $private_group_commands = [
+    "/start",
     "/identificate",
     "/cambiarusuario",
     "/micuenta",
@@ -6186,7 +6211,7 @@ Detalle:
         if (!empty($resultadoComandos["ok"])) {
             sendMessage($chat_id, "✅ Menú de comandos actualizado.
 
-El menú global y el menú privado han sido regenerados.
+El menú privado completo y el menú reducido de grupos han sido regenerados.
 
 Pulsa /start y cierra/abre el chat para refrescar Telegram.");
         } else {
