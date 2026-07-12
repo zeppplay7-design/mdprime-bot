@@ -124,9 +124,10 @@ function telegramHtml($text) {
 
 function configurarComandosTelegram() {
     $commands = [
-        ["command" => "start", "description" => "Abrir el menú principal"],
-        ["command" => "identificate", "description" => "Identificar o cambiar cuenta"],
-        ["command" => "cancelar", "description" => "Cancelar el proceso actual"]
+        ["command" => "start", "description" => "🏠 Abrir MDPRIME"],
+        ["command" => "identificate", "description" => "👤 Identificar cuenta"],
+        ["command" => "nuevo", "description" => "🆕 Crear nuevo usuario"],
+        ["command" => "cancelar", "description" => "❌ Cancelar proceso"]
     ];
 
     telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "default"])]);
