@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V66-CARGA-START-65-CONVERSION-MYSQL-20260712";
+$bot_version = "MDPRIME-BOT-V67-SOPORTE-CHAT-DIRECTO-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -5982,13 +5982,63 @@ if ($user_state === "renovar") {
 
 if ($user_state === "soporte") {
 
+    $from_soporte = $update["message"]["from"] ?? [];
+    $nombre_soporte = trim(
+        ($from_soporte["first_name"] ?? "") . " " .
+        ($from_soporte["last_name"] ?? "")
+    );
+    $alias_soporte = trim((string)($from_soporte["username"] ?? ""));
+
+    if ($nombre_soporte === "") {
+        $nombre_soporte = "Usuario Telegram";
+    }
+
+    $mensaje_soporte = $text !== "" ? $text : "📎 Ha enviado una foto, archivo o contenido multimedia.";
+    $alias_txt = $alias_soporte !== "" ? "@".$alias_soporte : "No disponible";
+
     $admin_msg = "🛠 NUEVO SOPORTE
 
-Mensaje: ".$text."
+━━━━━━━━━━━━━━━━━━
 
-Chat ID: ".$chat_id;
+👤 Nombre:
+".$nombre_soporte."
 
-    sendMessage($admin_id, $admin_msg, false);
+📲 Alias:
+".$alias_txt."
+
+🆔 Chat ID:
+".$chat_id."
+
+💬 Mensaje:
+".$mensaje_soporte."
+
+━━━━━━━━━━━━━━━━━━
+
+Responder desde el bot:
+/reply ".$chat_id." ";
+
+    $botones_soporte = [
+        "inline_keyboard" => []
+    ];
+
+    if ($alias_soporte !== "") {
+        $botones_soporte["inline_keyboard"][] = [[
+            "text" => "💬 Abrir chat con @".$alias_soporte,
+            "url" => "https://t.me/".$alias_soporte
+        ]];
+    }
+
+    $botones_soporte["inline_keyboard"][] = [[
+        "text" => "👤 Abrir chat con el usuario",
+        "url" => "tg://user?id=".$chat_id
+    ]];
+
+    sendInlineMessage($admin_id, $admin_msg, $botones_soporte);
+
+    // Si el usuario envía una foto, documento u otro contenido, también se reenvía al administrador.
+    if ($message_id && $text === "") {
+        forwardMessage($admin_id, $chat_id, $message_id);
+    }
 
     clearUserMode($state_file, $states, $chat_id);
 
