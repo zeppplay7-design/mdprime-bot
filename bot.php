@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V61-MENUS-POR-ROL-20260712";
+$bot_version = "MDPRIME-BOT-V64-PRIORIDAD-ROL-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -1503,28 +1503,158 @@ function consultarClienteApi($usuario) {
 }
 
 
-function consultarClienteParaSesionV63($usuario) {
+function construirRespuestaReferenteSesionV64($pdo, $cliente) {
+    $cliente_id = (int)($cliente["id"] ?? 0);
+
+    $stmt = $pdo->prepare("\n        SELECT *\n        FROM referidos\n        WHERE cliente_id = ?\n        ORDER BY\n            CASE\n                WHEN estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad >= CURDATE())\n                THEN 0 ELSE 1\n            END,\n            fecha_caducidad ASC,\n            nombre ASC\n    ");
+    $stmt->execute([$cliente_id]);
+    $referidos_db = $stmt->fetchAll();
+
+    $referidos_lista = [];
+    $activos = 0;
+    $inactivos = 0;
+    $proxima_caducidad = null;
+
+    foreach ($referidos_db as $ref) {
+        $caducidad = $ref["fecha_caducidad"] ?? null;
+        $estado_real = "Inactivo";
+
+        if (($ref["estado"] ?? "") === "Activo" && (!$caducidad || strtotime($caducidad) >= strtotime(date("Y-m-d")))) {
+            $estado_real = "Activo";
+            $activos++;
+            if ($caducidad && (!$proxima_caducidad || $caducidad < $proxima_caducidad)) {
+                $proxima_caducidad = $caducidad;
+            }
+        } else {
+            $inactivos++;
+        }
+
+        $dias = null;
+        if ($caducidad) {
+            $hoy = new DateTime(date("Y-m-d"));
+            $cad = new DateTime($caducidad);
+            $dias = (int)$hoy->diff($cad)->format("%r%a");
+        }
+
+        $referidos_lista[] = [
+            "id" => (int)($ref["id"] ?? 0),
+            "nombre" => $ref["nombre"] ?? "Sin nombre",
+            "estado" => $estado_real,
+            "fecha_alta" => !empty($ref["fecha_alta"]) ? date("d/m/Y", strtotime($ref["fecha_alta"])) : "Sin fecha",
+            "caducidad" => $caducidad ? date("d/m/Y", strtotime($caducidad)) : "Sin fecha",
+            "dias" => $dias,
+            "nota" => $ref["nota"] ?? ""
+        ];
+    }
+
+    $niveles = $pdo->query("SELECT * FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
+    $nivel_actual = [
+        "nivel" => "SIN NIVEL",
+        "min_activos" => 0,
+        "trimestral" => 0,
+        "semestral" => 0,
+        "anual" => 0
+    ];
+    $siguiente = null;
+
+    foreach ($niveles as $nivel) {
+        if ($activos >= (int)$nivel["min_activos"]) {
+            $nivel_actual = $nivel;
+        } elseif (!$siguiente) {
+            $siguiente = $nivel;
+        }
+    }
+
+    $dias_proxima = null;
+    if ($proxima_caducidad) {
+        $hoy = new DateTime(date("Y-m-d"));
+        $cad = new DateTime($proxima_caducidad);
+        $dias_proxima = (int)$hoy->diff($cad)->format("%r%a");
+    }
+
+    return [
+        "ok" => true,
+        "tipo" => "referente",
+        "cliente" => [
+            "id" => $cliente_id,
+            "nombre" => $cliente["nombre"] ?? "Sin nombre",
+            "contacto" => $cliente["contacto"] ?? "",
+            "telegram" => $cliente["telegram"] ?? ""
+        ],
+        "resumen" => [
+            "total_referidos" => count($referidos_db),
+            "activos" => $activos,
+            "inactivos" => $inactivos,
+            "proxima_caducidad" => $proxima_caducidad ? date("d/m/Y", strtotime($proxima_caducidad)) : "Sin fecha",
+            "dias_proxima_caducidad" => $dias_proxima
+        ],
+        "nivel" => [
+            "actual" => $nivel_actual["nivel"] ?? "SIN NIVEL",
+            "precio_3_meses" => (float)($nivel_actual["trimestral"] ?? 0),
+            "precio_6_meses" => (float)($nivel_actual["semestral"] ?? 0),
+            "precio_12_meses" => (float)($nivel_actual["anual"] ?? 0)
+        ],
+        "siguiente_nivel" => $siguiente ? [
+            "nivel" => $siguiente["nivel"] ?? "",
+            "min_activos" => (int)($siguiente["min_activos"] ?? 0),
+            "faltan" => max(0, (int)($siguiente["min_activos"] ?? 0) - $activos)
+        ] : null,
+        "referidos" => $referidos_lista
+    ];
+}
+
+function consultarClienteParaSesionV64($usuario) {
     $usuario = trim((string)$usuario);
     if ($usuario === "") return ["ok" => false, "error" => "Falta usuario"];
 
-    // Para identificar la sesión, un registro exacto en clientes_normales
-    // tiene prioridad. Evita que coincidencias antiguas o duplicadas en
-    // referidos hagan aparecer el menú equivocado.
     try {
         $pdo = getRailwayPdo();
-        $stmt = $pdo->prepare("
-            SELECT * FROM clientes_normales
-            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
-               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
-            ORDER BY id DESC
-            LIMIT 1
-        ");
+
+        // 1. REFERENTE: siempre tiene prioridad si existe en la tabla clientes.
+        $stmt = $pdo->prepare("\n            SELECT * FROM clientes\n            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))\n               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')\n            ORDER BY id DESC\n            LIMIT 1\n        ");
+        $stmt->execute([$usuario, $usuario]);
+        $cliente = $stmt->fetch();
+        if ($cliente) return construirRespuestaReferenteSesionV64($pdo, $cliente);
+
+        // 2. REFERIDO: solo si no es referente.
+        $stmt = $pdo->prepare("\n            SELECT * FROM referidos\n            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))\n               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')\n            ORDER BY id DESC\n            LIMIT 1\n        ");
+        $stmt->execute([$usuario, $usuario]);
+        $referido = $stmt->fetch();
+        if ($referido) {
+            $referido["referente_id"] = (int)($referido["cliente_id"] ?? 0);
+            $referido["referente_nombre"] = "No disponible";
+            $referido["referente_telegram"] = "";
+            $referido["referente_contacto"] = "";
+
+            if (!empty($referido["cliente_id"])) {
+                $st = $pdo->prepare("SELECT id,nombre,telegram,contacto FROM clientes WHERE id=? LIMIT 1");
+                $st->execute([(int)$referido["cliente_id"]]);
+                $ref = $st->fetch();
+                if ($ref) {
+                    $referido["referente_id"] = (int)$ref["id"];
+                    $referido["referente_nombre"] = $ref["nombre"] ?? "No disponible";
+                    $referido["referente_telegram"] = $ref["telegram"] ?? "";
+                    $referido["referente_contacto"] = $ref["contacto"] ?? "";
+                }
+            }
+            return construirRespuestaReferido($referido);
+        }
+
+        // 3. CLIENTE NORMAL: únicamente si no aparece en las tablas anteriores.
+        $stmt = $pdo->prepare("\n            SELECT * FROM clientes_normales\n            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))\n               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')\n            ORDER BY id DESC\n            LIMIT 1\n        ");
         $stmt->execute([$usuario, $usuario]);
         $normal = $stmt->fetch();
         if ($normal) return construirRespuestaClienteNormal($normal);
-    } catch (Throwable $e) {}
 
-    return consultarClienteApi($usuario);
+        return ["ok" => false, "error" => "Cliente o referido no encontrado", "buscado" => $usuario];
+    } catch (Throwable $e) {
+        return ["ok" => false, "error" => "Error MySQL directo", "detalle" => $e->getMessage()];
+    }
+}
+
+// Alias mantenido para no romper llamadas existentes.
+function consultarClienteParaSesionV63($usuario) {
+    return consultarClienteParaSesionV64($usuario);
 }
 
 function fmtDias($dias) {
@@ -3534,7 +3664,7 @@ function tecladoVolverPanelReferenteV60($extra = []) {
 }
 
 function datosReferenteV60($usuario) {
-    $data = consultarClienteApi($usuario);
+    $data = consultarClienteParaSesionV64($usuario);
     if (empty($data["ok"]) || ($data["tipo"] ?? "") !== "referente") {
         return null;
     }
@@ -3656,7 +3786,7 @@ function tecladoVolverPanelClienteNormalV60($extra = []) {
 }
 
 function datosClienteNormalV60($usuario) {
-    $data = consultarClienteApi($usuario);
+    $data = consultarClienteParaSesionV64($usuario);
     if (empty($data["ok"]) || ($data["tipo"] ?? "") !== "normal") return null;
     return $data;
 }
