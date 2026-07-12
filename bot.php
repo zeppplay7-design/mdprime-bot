@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V68-MENU-PHP-ICONOS-20260712";
+$bot_version = "MDPRIME-BOT-V69-MULTICUENTA-NUEVOS-NO-REFERIDOS-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -4245,6 +4245,7 @@ function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
         $kb = ["inline_keyboard" => [
             [["text" => "👤 Identificarme", "callback_data" => "menu_identificate"]],
             [["text" => "🆕 Nuevo usuario", "callback_data" => "menu_nuevo_usuario"]],
+            [["text" => "👥 Contratar 2 o 3 usuarios", "callback_data" => "menu_multicuenta"]],
             [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
             [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
             [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]]
@@ -4391,6 +4392,17 @@ if (isset($update["callback_query"])) {
         clearUserMode($state_file, $states, $chat_id);
         setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
         editMessageText($chat_id, $message_id, "🆕 CREAR CUENTA NUEVA MDPRIME\n\nEscribe cómo quieres que se llame tu usuario.\n\nEjemplo:\nMiguelTV\n\n⚠️ Si el nombre ya existe, el bot te indicará que debes renovarlo. La cuenta no se activará hasta completar el pago y la aprobación.", tecladoAtrasYCancelarV65());
+        http_response_code(200); exit;
+    }
+    if ($callback_data === "menu_multicuenta") {
+        clearUserMode($state_file, $states, $chat_id);
+        multiGuardarEstado($state_file, $states, $chat_id, [], "multi_cantidad");
+        editMessageText(
+            $chat_id,
+            $message_id,
+            "💎 PLAN MULTICUENTA\n\nContrata 2 o 3 usuarios nuevos con un único pago y un único comprobante.\n\n✅ Solo para clientes nuevos con tarifa normal.\n❌ No aplica a cuentas de referidos.\n\n¿Cuántos usuarios quieres contratar?",
+            multiCantidadKeyboard()
+        );
         http_response_code(200); exit;
     }
     if ($callback_data === "menu_apps") { editMessageText($chat_id,$message_id,"📲 APPS POR DOWNLOADER\n\n🔥 V9 → 6713896\n📺 OTT → 7669716\n⚡ V8 → 6541023",tecladoAtrasGlobalV65()); http_response_code(200); exit; }
