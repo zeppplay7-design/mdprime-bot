@@ -3787,33 +3787,85 @@ function mostrarPanelReferenteV60($chat_id, $usuario, $editar_id = null) {
 
 function listaReferidosV60($data, $pagina = 0, $modoRenovar = false) {
     $todos = $data["referidos"] ?? [];
-    $porPagina = 8;
+    $porPagina = 7;
     $totalPaginas = max(1, (int)ceil(count($todos) / $porPagina));
     $pagina = max(0, min((int)$pagina, $totalPaginas - 1));
     $items = array_slice($todos, $pagina * $porPagina, $porPagina);
+
     $rows = [];
+    $pref = $modoRenovar ? "refpanel_renficha_" : "refpanel_ficha_";
+
     foreach ($items as $ref) {
         $id = (int)($ref["id"] ?? 0);
-        $icono = estadoIcono($ref["estado"] ?? "Inactivo");
-        $pref = $modoRenovar ? "refpanel_renficha_" : "refpanel_ficha_";
-        $rows[] = [["text" => $icono." ".($ref["nombre"] ?? "Sin nombre"), "callback_data" => $pref.$id."_".$pagina]];
+        $estado = $ref["estado"] ?? "Inactivo";
+        $icono = estadoIcono($estado);
+        $nombre = trim((string)($ref["nombre"] ?? "Sin nombre"));
+        $caducidad = trim((string)($ref["caducidad"] ?? "Sin fecha"));
+
+        $textoBoton = $icono." ".$nombre;
+        if ($caducidad !== "" && $caducidad !== "Sin fecha") {
+            $textoBoton .= "  ·  📅 ".$caducidad;
+        }
+
+        $rows[] = [[
+            "text" => $textoBoton,
+            "callback_data" => $pref.$id."_".$pagina
+        ]];
     }
-    $nav = [];
+
     $prefPag = $modoRenovar ? "refpanel_renovar_" : "refpanel_lista_";
-    if ($pagina > 0) $nav[] = ["text" => "⬅️", "callback_data" => $prefPag.($pagina-1)];
-    $nav[] = ["text" => "Página ".($pagina+1)."/".$totalPaginas, "callback_data" => "refpanel_nada"];
-    if ($pagina < $totalPaginas-1) $nav[] = ["text" => "➡️", "callback_data" => $prefPag.($pagina+1)];
-    if ($nav) $rows[] = $nav;
+    $nav = [];
+
+    if ($pagina > 0) {
+        $nav[] = ["text" => "⬅️ Anterior", "callback_data" => $prefPag.($pagina - 1)];
+    }
+
+    $nav[] = [
+        "text" => "📄 ".($pagina + 1)." de ".$totalPaginas,
+        "callback_data" => "refpanel_nada"
+    ];
+
+    if ($pagina < $totalPaginas - 1) {
+        $nav[] = ["text" => "Siguiente ➡️", "callback_data" => $prefPag.($pagina + 1)];
+    }
+
+    $rows[] = $nav;
     $rows[] = [["text" => "⬅️ Volver al panel", "callback_data" => "refpanel_inicio"]];
-    $titulo = $modoRenovar ? "🔄 SELECCIONA EL REFERIDO A RENOVAR" : "👥 MIS REFERIDOS";
+
+    $cliente = $data["cliente"] ?? [];
+    $resumen = $data["resumen"] ?? [];
+    $nivel = $data["nivel"]["actual"] ?? "SIN NIVEL";
+    $titulo = $modoRenovar ? "🔄 RENOVAR REFERIDO" : "👥 MIS REFERIDOS";
+
     $texto = $titulo."
 
-🙋 Referente: ".($data["cliente"]["nombre"] ?? "")."
 ".
-             "👥 Total: ".count($todos)." · 🟢 ".($data["resumen"]["activos"] ?? 0)." · 🔴 ".($data["resumen"]["inactivos"] ?? 0);
-    if (!$items) $texto .= "
+        "👑 Referente: ".($cliente["nombre"] ?? "Sin nombre")."
+".
+        nivelIcono($nivel)." Nivel: ".$nivel."
+
+".
+        "📊 RESUMEN
+".
+        "👥 Total: ".count($todos)."
+".
+        "🟢 Activos: ".($resumen["activos"] ?? 0)."
+".
+        "🔴 Inactivos: ".($resumen["inactivos"] ?? 0)."
+".
+        "📅 Próxima caducidad: ".($resumen["proxima_caducidad"] ?? "Sin fecha")."
+
+".
+        ($modoRenovar
+            ? "Selecciona el referido que deseas renovar:"
+            : "Pulsa un referido para ver su ficha completa:");
+
+    if (!$items) {
+        $texto .= "
 
 No tienes referidos registrados.";
+    }
+
     return [$texto, ["inline_keyboard" => $rows]];
 }
 
