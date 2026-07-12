@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V65-CONVERSION-MYSQL-20260712";
+$bot_version = "MDPRIME-BOT-V66-CARGA-START-65-CONVERSION-MYSQL-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -4191,6 +4191,31 @@ function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
     if ($editar_id) editMessageText($chat_id, $editar_id, $txt, $kb); else sendInlineMessage($chat_id, $txt, $kb);
 }
 
+
+function mostrarCargaInicioV66($chat_id, &$states) {
+    $base = "━━━━━━━━━━━━━━━━━━━━━━\n\n🚀 MDPRIME\n\n✨ THE BEST STREAM ✨\n\n";
+
+    $resp = sendInlineMessage($chat_id, $base."█▒▒▒▒▒▒▒▒▒ 10%");
+    $messageId = $resp["result"]["message_id"] ?? null;
+
+    if (!$messageId) {
+        mostrarMenuPrincipalV61($chat_id, $states);
+        return;
+    }
+
+    usleep(220000);
+    editMessageText($chat_id, $messageId, $base."███▒▒▒▒▒▒▒ 30%");
+
+    usleep(220000);
+    editMessageText($chat_id, $messageId, $base."██████▒▒▒▒ 60%");
+
+    usleep(220000);
+    editMessageText($chat_id, $messageId, $base."██████████ 100%\n\n✅ Sistema iniciado correctamente\n\n━━━━━━━━━━━━━━━━━━━━━━");
+
+    usleep(300000);
+    mostrarMenuPrincipalV61($chat_id, $states, $messageId);
+}
+
 /* =========================
    RECIBIR UPDATE
 ========================= */
@@ -6038,7 +6063,7 @@ Has vuelto al menú principal.");
     case "/start":
         resetUserProcessState($state_file, $states, $chat_id);
         configurarComandosTelegram();
-        mostrarMenuPrincipalV61($chat_id, $states);
+        mostrarCargaInicioV66($chat_id, $states);
         break;
 
     case "/planes":
