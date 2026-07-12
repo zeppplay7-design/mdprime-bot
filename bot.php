@@ -1502,6 +1502,31 @@ function consultarClienteApi($usuario) {
     }
 }
 
+
+function consultarClienteParaSesionV63($usuario) {
+    $usuario = trim((string)$usuario);
+    if ($usuario === "") return ["ok" => false, "error" => "Falta usuario"];
+
+    // Para identificar la sesión, un registro exacto en clientes_normales
+    // tiene prioridad. Evita que coincidencias antiguas o duplicadas en
+    // referidos hagan aparecer el menú equivocado.
+    try {
+        $pdo = getRailwayPdo();
+        $stmt = $pdo->prepare("
+            SELECT * FROM clientes_normales
+            WHERE LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+               OR REPLACE(LOWER(TRIM(nombre)), ' ', '') = REPLACE(LOWER(TRIM(?)), ' ', '')
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([$usuario, $usuario]);
+        $normal = $stmt->fetch();
+        if ($normal) return construirRespuestaClienteNormal($normal);
+    } catch (Throwable $e) {}
+
+    return consultarClienteApi($usuario);
+}
+
 function fmtDias($dias) {
     if ($dias === null || $dias === "") {
         return "Sin calcular";
@@ -3717,14 +3742,8 @@ function esAdministradorV62($chat_id) {
 }
 
 function agregarBotonAdminV62($keyboard, $chat_id) {
-    if (!esAdministradorV62($chat_id)) return $keyboard;
-    if (!isset($keyboard["inline_keyboard"]) || !is_array($keyboard["inline_keyboard"])) {
-        $keyboard["inline_keyboard"] = [];
-    }
-    // El administrador puede volver a su panel sin perder el usuario activo.
-    array_splice($keyboard["inline_keyboard"], max(0, count($keyboard["inline_keyboard"]) - 1), 0, [[
-        ["text" => "👑 Panel administrador", "callback_data" => "admin_abrir_panel"]
-    ]]);
+    // Cuando hay un usuario identificado, se muestra únicamente su menú real.
+    // No se mezclan controles administrativos con las opciones del cliente.
     return $keyboard;
 }
 
@@ -3872,7 +3891,7 @@ function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
         return;
     }
 
-    $data = consultarClienteApi($usuario);
+    $data = consultarClienteParaSesionV63($usuario);
     if (empty($data["ok"])) {
         unset($states[$chat_id]["usuario_mdprime"], $states[$chat_id]["vista_actual"]);
         saveStates($GLOBALS["state_file"], $states);
@@ -4534,7 +4553,7 @@ Selecciona la duración:";
         }
 
         $pending = $states[$chat_id]["pending_command"] ?? "/micuenta";
-        $data = consultarClienteApi($usuario_confirmado);
+        $data = consultarClienteParaSesionV63($usuario_confirmado);
 
         saveUsuarioMdprime($state_file, $states, $chat_id, $usuario_confirmado);
 
@@ -4545,28 +4564,22 @@ Selecciona la duración:";
         unset($states[$chat_id]["mode"], $states[$chat_id]["usuario_pendiente"]);
         saveStates($state_file, $states);
 
-        if (!empty($data["ok"]) && esAdministradorV62($chat_id)) {
-            $states[$chat_id]["vista_actual"] = "eleccion";
-            saveStates($state_file, $states);
-            sendInlineMessage($chat_id, textoEleccionAdminV62($data, $usuario_confirmado), tecladoEleccionAdminV62($data["tipo"] ?? "", $usuario_confirmado));
-        } else {
-            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
-            $states[$chat_id]["vista_actual"] = "usuario";
-            saveStates($state_file, $states);
-            sendMessage($chat_id, "✅ Usuario confirmado:
+        if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+        $states[$chat_id]["vista_actual"] = "usuario";
+        saveStates($state_file, $states);
+        sendMessage($chat_id, "✅ Usuario confirmado:
 ".$usuario_confirmado."
 
 Tu usuario ha quedado vinculado correctamente.");
 
-            if (!empty($data["ok"])) {
-                if ($pending === "/caducidad") {
-                    sendLongMessage($chat_id, formatCaducidad($data));
-                } elseif ($pending === "/misreferidos" && ($data["tipo"] ?? "") === "referente") {
-                    [$txt,$kb] = listaReferidosV60($data, 0, false);
-                    sendInlineMessage($chat_id, $txt, $kb);
-                } else {
-                    mostrarMenuPrincipalV61($chat_id, $states);
-                }
+        if (!empty($data["ok"])) {
+            if ($pending === "/caducidad") {
+                sendLongMessage($chat_id, formatCaducidad($data));
+            } elseif ($pending === "/misreferidos" && ($data["tipo"] ?? "") === "referente") {
+                [$txt,$kb] = listaReferidosV60($data, 0, false);
+                sendInlineMessage($chat_id, $txt, $kb);
+            } else {
+                mostrarMenuPrincipalV61($chat_id, $states);
             }
         }
 
@@ -5179,7 +5192,7 @@ if ($user_state === "confirmando_usuario_mdprime") {
     }
 
     if ($usuario_pendiente !== "") {
-        $datos_pendientes = consultarClienteApi($usuario_pendiente);
+        $datos_pendientes = consultarClienteParaSesionV63($usuario_pendiente);
     }
 
     if (!empty($datos_pendientes["ok"])) {
