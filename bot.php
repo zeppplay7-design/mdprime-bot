@@ -183,16 +183,32 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     }
 
     if ($keyboard) {
-        $data["reply_markup"] = json_encode([
-            "keyboard" => [
-                [["text" => "/start"]],
-                [["text" => "/identificate"]],
-                [["text" => "🆕 Nuevo usuario"]],
-                [["text" => "/cancelar"]]
-            ],
-            "resize_keyboard" => true,
-            "one_time_keyboard" => false
-        ]);
+        $es_grupo = ((int)$chat_id < 0);
+
+        if ($es_grupo) {
+            // Teclado reducido para grupos: sustituye cualquier teclado privado anterior.
+            $data["reply_markup"] = json_encode([
+                "keyboard" => [
+                    [["text" => "/agenda"]],
+                    [["text" => "/apps"]],
+                    [["text" => "/soporte"]]
+                ],
+                "resize_keyboard" => true,
+                "one_time_keyboard" => false
+            ]);
+        } else {
+            // Teclado completo únicamente en el chat privado del bot.
+            $data["reply_markup"] = json_encode([
+                "keyboard" => [
+                    [["text" => "/start"]],
+                    [["text" => "/identificate"]],
+                    [["text" => "🆕 Nuevo usuario"]],
+                    [["text" => "/cancelar"]]
+                ],
+                "resize_keyboard" => true,
+                "one_time_keyboard" => false
+            ]);
+        }
     }
 
     return telegramRequest("sendMessage", $data);
