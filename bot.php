@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V64-PRIORIDAD-ROL-20260712";
+$bot_version = "MDPRIME-BOT-V65-CONVERSION-MYSQL-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -513,12 +513,47 @@ function enviarAvisosCaducidadMdprime() {
 }
 
 
-function tecladoAdminConvertirNormalAReferido($cliente_chat_id) {
-    $cliente_chat_id = preg_replace('/[^0-9\-]/', '', (string)$cliente_chat_id);
+function asegurarTablaSolicitudesConversion() {
+    $pdo = getRailwayPdo();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS solicitudes_conversion (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        chat_id VARCHAR(80) NOT NULL,
+        normal_id INT NOT NULL,
+        normal_nombre VARCHAR(150) NOT NULL,
+        referente_id INT NOT NULL,
+        referente_nombre VARCHAR(150) NOT NULL,
+        estado ENUM('pendiente','aprobada','rechazada') NOT NULL DEFAULT 'pendiente',
+        creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        resuelto_en TIMESTAMP NULL DEFAULT NULL,
+        resuelto_por VARCHAR(80) DEFAULT NULL,
+        UNIQUE KEY uniq_conversion_pendiente (normal_id, referente_id, estado),
+        KEY idx_conversion_estado (estado),
+        KEY idx_conversion_chat (chat_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return $pdo;
+}
+
+function crearSolicitudConversionMysql($chat_id, $normal_id, $normal_nombre, $referente_id, $referente_nombre) {
+    try {
+        $pdo = asegurarTablaSolicitudesConversion();
+        $chk = $pdo->prepare("SELECT id FROM solicitudes_conversion WHERE normal_id=? AND estado='pendiente' ORDER BY id DESC LIMIT 1");
+        $chk->execute([(int)$normal_id]);
+        $existente = $chk->fetchColumn();
+        if ($existente) return ["ok"=>true,"id"=>(int)$existente,"existente"=>true];
+        $ins = $pdo->prepare("INSERT INTO solicitudes_conversion(chat_id,normal_id,normal_nombre,referente_id,referente_nombre) VALUES(?,?,?,?,?)");
+        $ins->execute([(string)$chat_id,(int)$normal_id,trim((string)$normal_nombre),(int)$referente_id,trim((string)$referente_nombre)]);
+        return ["ok"=>true,"id"=>(int)$pdo->lastInsertId(),"existente"=>false];
+    } catch (Throwable $e) {
+        return ["ok"=>false,"error"=>$e->getMessage()];
+    }
+}
+
+function tecladoAdminConvertirNormalAReferido($solicitud_id) {
+    $solicitud_id = (int)$solicitud_id;
     return [
         "inline_keyboard" => [
-            [["text" => "✅ Aprobar conversión", "callback_data" => "adm_refconv_si_".$cliente_chat_id]],
-            [["text" => "❌ Rechazar solicitud", "callback_data" => "adm_refconv_no_".$cliente_chat_id]]
+            [["text" => "✅ Aprobar conversión", "callback_data" => "adm_refconv_si_".$solicitud_id]],
+            [["text" => "❌ Rechazar solicitud", "callback_data" => "adm_refconv_no_".$solicitud_id]]
         ]
     ];
 }
@@ -4460,44 +4495,53 @@ Detalle:
             http_response_code(200); exit;
         }
 
-        if (!preg_match('/^adm_refconv_(si|no)_(-?[0-9]+)$/', $callback_data, $m)) {
+        if (!preg_match('/^adm_refconv_(si|no)_([0-9]+)$/', $callback_data, $m)) {
             editMessageText($chat_id, $message_id, "❌ Solicitud no válida.");
             http_response_code(200); exit;
         }
 
         $accion = $m[1];
-        $clienteChatId = (string)$m[2];
-        $clienteStates = loadStates($state_file);
-        $ctxCliente = $clienteStates[$clienteChatId] ?? [];
-        $ctx = $ctxCliente["referir_context"] ?? [];
-        $normalId = (int)($ctxCliente["referir_normal_id"] ?? 0);
-        $normalNombre = trim((string)($ctxCliente["referir_normal_nombre"] ?? ""));
+        $solicitudId = (int)$m[2];
 
-        if ($normalId <= 0 || empty($ctx["referente_nombre"])) {
-            editMessageText($chat_id, $message_id, "⚠️ La solicitud ya no está disponible o perdió sus datos.");
+        try {
+            $pdoSol = asegurarTablaSolicitudesConversion();
+            $stSol = $pdoSol->prepare("SELECT * FROM solicitudes_conversion WHERE id=? LIMIT 1");
+            $stSol->execute([$solicitudId]);
+            $sol = $stSol->fetch();
+        } catch (Throwable $e) {
+            $sol = false;
+        }
+
+        if (!$sol) {
+            editMessageText($chat_id, $message_id, "⚠️ La solicitud no existe.");
             http_response_code(200); exit;
         }
 
+        if (($sol["estado"] ?? "") !== "pendiente") {
+            editMessageText($chat_id, $message_id, "ℹ️ Esta solicitud ya fue ".($sol["estado"] ?? "resuelta").".");
+            http_response_code(200); exit;
+        }
+
+        $clienteChatId = (string)$sol["chat_id"];
+        $normalId = (int)$sol["normal_id"];
+        $normalNombre = trim((string)$sol["normal_nombre"]);
+        $referenteId = (int)$sol["referente_id"];
+        $referenteNombreSolicitado = trim((string)$sol["referente_nombre"]);
+
         if ($accion === "no") {
-            clearUserMode($state_file, $clienteStates, $clienteChatId);
+            $up = $pdoSol->prepare("UPDATE solicitudes_conversion SET estado='rechazada',resuelto_en=NOW(),resuelto_por=? WHERE id=? AND estado='pendiente'");
+            $up->execute([(string)$chat_id,$solicitudId]);
             editMessageText($chat_id, $message_id, "❌ SOLICITUD RECHAZADA
 
 👤 Usuario: ".$normalNombre."
-👥 Referente solicitado: ".($ctx["referente_nombre"] ?? "No disponible")."
+👥 Referente solicitado: ".$referenteNombreSolicitado."
 
 No se ha modificado ninguna cuenta.");
-            sendMessage($clienteChatId, "❌ El administrador no ha aprobado el cambio de tu cuenta normal a referido.
-
-No se ha modificado tu cuenta. Para cualquier duda, pulsa /soporte.");
+            sendMessage($clienteChatId, "❌ El administrador no ha aprobado el cambio de tu cuenta normal a referido.");
             http_response_code(200); exit;
         }
 
-        $resultado = convertirClienteNormalAReferidoRailway(
-            $normalId,
-            (int)($ctx["referente_id"] ?? 0),
-            (int)($ctx["referente_normal_id"] ?? 0),
-            $clienteChatId
-        );
+        $resultado = convertirClienteNormalAReferidoRailway($normalId, $referenteId, 0, $clienteChatId);
 
         if (empty($resultado["ok"])) {
             editMessageText($chat_id, $message_id, "❌ No se pudo aprobar la conversión.
@@ -4507,9 +4551,11 @@ Detalle:
             http_response_code(200); exit;
         }
 
+        $up = $pdoSol->prepare("UPDATE solicitudes_conversion SET estado='aprobada',resuelto_en=NOW(),resuelto_por=? WHERE id=? AND estado='pendiente'");
+        $up->execute([(string)$chat_id,$solicitudId]);
+
         $usuarioMovido = $resultado["usuario"] ?? $normalNombre;
-        $referenteNombre = $resultado["referente_nombre"] ?? ($ctx["referente_nombre"] ?? "No disponible");
-        clearUserMode($state_file, $clienteStates, $clienteChatId);
+        $referenteNombre = $resultado["referente_nombre"] ?? $referenteNombreSolicitado;
 
         editMessageText($chat_id, $message_id, "✅ CONVERSIÓN APROBADA
 
@@ -5398,18 +5444,23 @@ Escríbelo de nuevo o pulsa /cancelar.");
     $refId = (int)$infoRef["referente"]["id"];
     $refNombre = $infoRef["referente"]["nombre"] ?? $nombre_referente;
 
-    $states[$chat_id]["mode"] = "referir_conversion_pendiente_admin";
-    $states[$chat_id]["referir_normal_id"] = $normalId;
-    $states[$chat_id]["referir_normal_nombre"] = $normal["nombre"] ?? $usuarioNormal;
-    $states[$chat_id]["referir_context"] = [
-        "alta_tipo" => "referido",
-        "referente_id" => $refId,
-        "referente_normal_id" => 0,
-        "convertir_referente" => false,
-        "referente_nombre" => $refNombre,
-        "nivel_referente" => $infoRef["nivel"] ?? "cobre"
-    ];
-    saveStates($state_file, $states);
+    $solicitud = crearSolicitudConversionMysql(
+        $chat_id,
+        $normalId,
+        $normal["nombre"] ?? $usuarioNormal,
+        $refId,
+        $refNombre
+    );
+
+    if (empty($solicitud["ok"])) {
+        sendMessage($chat_id, "❌ No se pudo guardar la solicitud.
+
+Detalle:
+".($solicitud["error"] ?? "Error desconocido"));
+        http_response_code(200); exit;
+    }
+
+    resetUserProcessState($state_file, $states, $chat_id);
 
     sendMessage($chat_id, "⏳ SOLICITUD ENVIADA
 
@@ -5443,7 +5494,7 @@ El cambio solo se realizará si lo aprueba el administrador.");
 ".$chat_id."
 
 ¿Aprobar el cambio conservando la fecha de caducidad?",
-        tecladoAdminConvertirNormalAReferido($chat_id)
+        tecladoAdminConvertirNormalAReferido((int)$solicitud["id"])
     );
     http_response_code(200); exit;
 }
