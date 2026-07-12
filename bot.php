@@ -5615,22 +5615,53 @@ if ($user_state === "referir_usuario") {
     if (!empty($existe["ok"])) {
         if (!empty($existe["cliente_normal"])) {
             if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) $states[$chat_id] = [];
+
             $normal = $existe["cliente_normal"];
-            $states[$chat_id]["mode"] = "referir_conversion_pendiente_admin";
-            $states[$chat_id]["referir_normal_id"] = (int)($normal["id"] ?? 0);
-            $states[$chat_id]["referir_normal_nombre"] = $normal["nombre"] ?? $usuario_nuevo;
-            saveStates($state_file, $states);
             $ctx = $states[$chat_id]["referir_context"] ?? [];
+            $normalId = (int)($normal["id"] ?? 0);
+            $normalNombre = trim((string)($normal["nombre"] ?? $usuario_nuevo));
+            $referenteId = (int)($ctx["referente_id"] ?? 0);
+            $referenteNombre = trim((string)($ctx["referente_nombre"] ?? ""));
+
+            if ($normalId <= 0 || $referenteId <= 0 || $referenteNombre === "") {
+                sendMessage($chat_id, "❌ No se pudo recuperar el referente seleccionado.
+
+Vuelve a pulsar 👥 Unirme a un referente y repite el proceso.");
+                http_response_code(200); exit;
+            }
+
+            $solicitud = crearSolicitudConversionMysql(
+                $chat_id,
+                $normalId,
+                $normalNombre,
+                $referenteId,
+                $referenteNombre
+            );
+
+            if (empty($solicitud["ok"])) {
+                sendMessage($chat_id, "❌ No se pudo guardar la solicitud.
+
+Detalle:
+".($solicitud["error"] ?? "Error desconocido"));
+                http_response_code(200); exit;
+            }
+
+            $solicitudId = (int)$solicitud["id"];
+            $states[$chat_id]["mode"] = "referir_conversion_pendiente_admin";
+            $states[$chat_id]["referir_normal_id"] = $normalId;
+            $states[$chat_id]["referir_normal_nombre"] = $normalNombre;
+            $states[$chat_id]["solicitud_conversion_id"] = $solicitudId;
+            saveStates($state_file, $states);
 
             sendMessage($chat_id, "⏳ SOLICITUD ENVIADA AL ADMINISTRADOR
 
 ━━━━━━━━━━━━━━━━━━
 
 👤 Cuenta normal:
-".($normal["nombre"] ?? $usuario_nuevo)."
+".$normalNombre."
 
 👥 Referente solicitado:
-".($ctx["referente_nombre"] ?? "No disponible")."
+".$referenteNombre."
 
 📅 Caducidad actual:
 ".($normal["caducidad"] ?? "Sin fecha")."
@@ -5648,11 +5679,14 @@ No se realizará ningún cambio hasta que el administrador la acepte.");
 
 ━━━━━━━━━━━━━━━━━━
 
+🆔 Solicitud:
+#".$solicitudId."
+
 👤 Cliente normal:
-".($normal["nombre"] ?? $usuario_nuevo)."
+".$normalNombre."
 
 👥 Referente solicitado:
-".($ctx["referente_nombre"] ?? "No disponible")."
+".$referenteNombre."
 
 📅 Caducidad actual:
 ".($normal["caducidad"] ?? "Sin fecha")."
@@ -5669,7 +5703,7 @@ No se realizará ningún cambio hasta que el administrador la acepte.");
 ━━━━━━━━━━━━━━━━━━
 
 Solo al aprobar se eliminará de clientes normales y se añadirá a los referidos del referente indicado.",
-                tecladoAdminConvertirNormalAReferido($chat_id));
+                tecladoAdminConvertirNormalAReferido($solicitudId));
             http_response_code(200); exit;
         }
         sendMessage($chat_id, "⚠️ Ese usuario ya existe como referente o como referido.
