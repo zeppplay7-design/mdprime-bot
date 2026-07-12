@@ -533,6 +533,49 @@ function asegurarTablaSolicitudesConversion() {
     return $pdo;
 }
 
+
+function asegurarTablaSeleccionReferenteBot() {
+    $pdo = getRailwayPdo();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS seleccion_referente_bot (
+        chat_id VARCHAR(80) PRIMARY KEY,
+        referente_id INT NOT NULL,
+        referente_nombre VARCHAR(150) NOT NULL,
+        actualizado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    return $pdo;
+}
+
+function guardarSeleccionReferenteBot($chat_id, $referente_id, $referente_nombre) {
+    try {
+        $pdo = asegurarTablaSeleccionReferenteBot();
+        $st = $pdo->prepare("INSERT INTO seleccion_referente_bot(chat_id,referente_id,referente_nombre) VALUES(?,?,?) ON DUPLICATE KEY UPDATE referente_id=VALUES(referente_id), referente_nombre=VALUES(referente_nombre), actualizado_en=CURRENT_TIMESTAMP");
+        $st->execute([(string)$chat_id, (int)$referente_id, trim((string)$referente_nombre)]);
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function obtenerSeleccionReferenteBot($chat_id) {
+    try {
+        $pdo = asegurarTablaSeleccionReferenteBot();
+        $st = $pdo->prepare("SELECT referente_id, referente_nombre FROM seleccion_referente_bot WHERE chat_id=? LIMIT 1");
+        $st->execute([(string)$chat_id]);
+        $row = $st->fetch();
+        return $row ?: null;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
+function borrarSeleccionReferenteBot($chat_id) {
+    try {
+        $pdo = asegurarTablaSeleccionReferenteBot();
+        $st = $pdo->prepare("DELETE FROM seleccion_referente_bot WHERE chat_id=?");
+        $st->execute([(string)$chat_id]);
+    } catch (Throwable $e) {}
+}
+
 function crearSolicitudConversionMysql($chat_id, $normal_id, $normal_nombre, $referente_id, $referente_nombre) {
     try {
         $pdo = asegurarTablaSolicitudesConversion();
@@ -5592,6 +5635,11 @@ Cuando sea aprobado, el bot continuará automáticamente y te pedirá el nombre 
         "nivel_referente" => $nivelRef
     ];
     saveStates($state_file, $states);
+    guardarSeleccionReferenteBot(
+        $chat_id,
+        (int)($infoRef["referente"]["id"] ?? 0),
+        (string)($infoRef["referente"]["nombre"] ?? "")
+    );
 
     sendMessage($chat_id, "✅ REFERENTE ENCONTRADO\n\n━━━━━━━━━━━━━━━━━━\n\n👥 Referente:\n".$infoRef["referente"]["nombre"]."\n\n🏆 Nivel actual:\n".renovarNivelTxt($nivelRef)."\n\n💶 Tarifas disponibles:\n3 meses → ".renovarPrecioReferidos($nivelRef, 3)."€\n6 meses → ".renovarPrecioReferidos($nivelRef, 6)."€\n12 meses → ".renovarPrecioReferidos($nivelRef, 12)."€\n\n━━━━━━━━━━━━━━━━━━\n\nAhora escribe el nombre que quieres para tu nueva cuenta MDPRIME.\n\nEjemplo:\nMiguelTV");
     http_response_code(200);
@@ -5623,6 +5671,14 @@ if ($user_state === "referir_usuario") {
             $referenteId = (int)($ctx["referente_id"] ?? 0);
             $referenteNombre = trim((string)($ctx["referente_nombre"] ?? ""));
 
+            if ($referenteId <= 0 || $referenteNombre === "") {
+                $seleccionDb = obtenerSeleccionReferenteBot($chat_id);
+                if ($seleccionDb) {
+                    $referenteId = (int)($seleccionDb["referente_id"] ?? 0);
+                    $referenteNombre = trim((string)($seleccionDb["referente_nombre"] ?? ""));
+                }
+            }
+
             if ($normalId <= 0 || $referenteId <= 0 || $referenteNombre === "") {
                 sendMessage($chat_id, "❌ No se pudo recuperar el referente seleccionado.
 
@@ -5652,6 +5708,7 @@ Detalle:
             $states[$chat_id]["referir_normal_nombre"] = $normalNombre;
             $states[$chat_id]["solicitud_conversion_id"] = $solicitudId;
             saveStates($state_file, $states);
+            borrarSeleccionReferenteBot($chat_id);
 
             sendMessage($chat_id, "⏳ SOLICITUD ENVIADA AL ADMINISTRADOR
 
