@@ -4305,7 +4305,33 @@ Pulsa /soporte y explica tu incidencia.", tecladoVolverPanelClienteNormalV60());
             http_response_code(200); exit;
         }
         if ($callback_data === "refpanel_anadir") {
-            setUserMode($state_file, $states, $chat_id, "referir_usuario");
+            $refCliente = $dataRef["cliente"] ?? [];
+            $refId = (int)($refCliente["id"] ?? 0);
+            $refNombre = trim((string)($refCliente["nombre"] ?? $usuario));
+
+            if ($refId <= 0 || $refNombre === "") {
+                editMessageText($chat_id, $message_id, "❌ No se pudo identificar tu cuenta de referente.
+
+Vuelve al inicio e identifícate de nuevo.");
+                http_response_code(200); exit;
+            }
+
+            if (!isset($states[$chat_id]) || !is_array($states[$chat_id])) {
+                $states[$chat_id] = [];
+            }
+
+            $states[$chat_id]["mode"] = "referir_usuario";
+            $states[$chat_id]["referir_context"] = [
+                "alta_tipo" => "referido",
+                "referente_id" => $refId,
+                "referente_normal_id" => 0,
+                "convertir_referente" => false,
+                "referente_nombre" => $refNombre,
+                "nivel_referente" => renovarNivelKeyDesdeTexto($dataRef["nivel"]["actual"] ?? "")
+            ];
+            saveStates($state_file, $states);
+            guardarSeleccionReferenteBot($chat_id, $refId, $refNombre);
+
             editMessageText($chat_id,$message_id,"➕ AÑADIR REFERIDO
 
 Escribe el usuario MDPRIME que deseas unir a tu cuenta de referente.
@@ -5676,6 +5702,22 @@ if ($user_state === "referir_usuario") {
                 if ($seleccionDb) {
                     $referenteId = (int)($seleccionDb["referente_id"] ?? 0);
                     $referenteNombre = trim((string)($seleccionDb["referente_nombre"] ?? ""));
+                }
+            }
+
+            // Último respaldo: si quien realiza la acción está identificado como referente,
+            // usar directamente su propia cuenta como referente seleccionado.
+            if ($referenteId <= 0 || $referenteNombre === "") {
+                $usuarioSesion = getSavedUsuario($states, $chat_id);
+                if ($usuarioSesion !== "") {
+                    $datosSesionRef = datosReferenteV60($usuarioSesion);
+                    if (!empty($datosSesionRef["cliente"])) {
+                        $referenteId = (int)($datosSesionRef["cliente"]["id"] ?? 0);
+                        $referenteNombre = trim((string)($datosSesionRef["cliente"]["nombre"] ?? $usuarioSesion));
+                        if ($referenteId > 0 && $referenteNombre !== "") {
+                            guardarSeleccionReferenteBot($chat_id, $referenteId, $referenteNombre);
+                        }
+                    }
                 }
             }
 
