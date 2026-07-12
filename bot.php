@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V67-SOPORTE-CHAT-DIRECTO-20260712";
+$bot_version = "MDPRIME-BOT-V68-BOTON-ABRIR-BOT-GRUPOS-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -191,7 +191,8 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
                 "keyboard" => [
                     [["text" => "/agenda"]],
                     [["text" => "/apps"]],
-                    [["text" => "/soporte"]]
+                    [["text" => "/soporte"]],
+                    [["text" => "🏠 MDPRIME Bot"]]
                 ],
                 "resize_keyboard" => true,
                 "one_time_keyboard" => false
@@ -686,7 +687,8 @@ function enviarAvisoAccionPrivadaGrupo($chat_id, $message_id = null) {
             "keyboard" => [
                 [["text" => "/agenda"]],
                 [["text" => "/apps"]],
-                [["text" => "/soporte"]]
+                [["text" => "/soporte"]],
+                [["text" => "🏠 MDPRIME Bot"]]
             ],
             "resize_keyboard" => true,
             "one_time_keyboard" => false,
@@ -5573,9 +5575,12 @@ if ($text === "") {
 $command = strtolower(trim(explode(" ", $text)[0]));
 $command = explode("@", $command)[0];
 
-// Botón visible del teclado: reutiliza exactamente el flujo existente de /nuevo.
+// Botones visibles del teclado.
 if (trim($text) === "🆕 Nuevo usuario") {
     $command = "/nuevo";
+}
+if (trim($text) === "🏠 MDPRIME Bot") {
+    $command = "/abrirbot";
 }
 
 $parts_text = explode(" ", $text, 2);
@@ -5585,7 +5590,7 @@ $chat_type = $update["message"]["chat"]["type"] ?? "private";
 
 // En grupos, ignorar cualquier texto normal que no sea comando.
 // Así el bot no responde "Comando no reconocido" a conversaciones normales.
-if ($chat_type !== "private" && substr($text, 0, 1) !== "/") {
+if ($chat_type !== "private" && substr($text, 0, 1) !== "/" && $command !== "/abrirbot") {
     http_response_code(200);
     exit;
 }
@@ -6486,6 +6491,23 @@ case "/renovar":
 
         clearUserMode($state_file, $states, $chat_id);
         sendInlineMessage($chat_id, soporteMenuTexto(), soporteMenuKeyboard());
+        break;
+
+    case "/abrirbot":
+        $tecladoAbrirBot = [
+            "inline_keyboard" => [
+                [[
+                    "text" => "🔒 Abrir MDPRIME Bot",
+                    "url" => $bot_link."?start=grupo"
+                ]]
+            ]
+        ];
+
+        sendInlineMessage(
+            $chat_id,
+            "🤖 Accede al chat privado de MDPRIME Bot pulsando el botón de abajo.",
+            $tecladoAbrirBot
+        );
         break;
 
     case "/agenda":
