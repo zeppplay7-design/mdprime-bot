@@ -3720,6 +3720,95 @@ function tecladoPanelAdminV61() {
     ]];
 }
 
+
+function adminTextoSolicitudesV61($states) {
+    $nuevas = $states["_nuevas_cuentas_pendientes"] ?? [];
+    $multi = $states["_multicuentas_pendientes"] ?? [];
+    $conversiones = 0;
+    foreach ($states as $k => $st) {
+        if (!is_array($st) || str_starts_with((string)$k, "_")) continue;
+        $modo = $st["mode"] ?? "";
+        if (in_array($modo, ["referir_conversion_pendiente_admin", "referir_promocion_pendiente_admin"], true)) $conversiones++;
+    }
+    $total = count($nuevas) + count($multi) + $conversiones;
+    $txt = "📩 SOLICITUDES PENDIENTES\n\n";
+    $txt .= "🆕 Nuevas cuentas: ".count($nuevas)."\n";
+    $txt .= "👥 Multicuentas: ".count($multi)."\n";
+    $txt .= "🔁 Conversiones / promociones: ".$conversiones."\n";
+    $txt .= "━━━━━━━━━━━━━━━━━━\n";
+    $txt .= "📌 Total pendiente: ".$total;
+    if ($total === 0) $txt .= "\n\n✅ No hay solicitudes pendientes.";
+    else $txt .= "\n\nLas solicitudes completas siguen apareciendo en este chat con sus botones de aprobar o rechazar.";
+    return $txt;
+}
+
+function adminTextoRenovacionesV61($states) {
+    $pend = $states["_renovaciones_pendientes"] ?? [];
+    $txt = "💳 RENOVACIONES PENDIENTES\n\n📌 Total: ".count($pend)."\n";
+    if (!$pend) return $txt."\n✅ No hay renovaciones pendientes.";
+    $i=0;
+    foreach ($pend as $id => $r) {
+        if (++$i > 20) { $txt .= "\n… y ".(count($pend)-20)." más."; break; }
+        $txt .= "\n━━━━━━━━━━━━━━\n👤 ".($r["usuario"] ?? $r["usuario_mdprime"] ?? "Sin usuario");
+        $txt .= "\n📦 ".($r["meses"] ?? "?")." meses";
+        if (isset($r["precio"])) $txt .= " · ".$r["precio"]."€";
+    }
+    $txt .= "\n\nPulsa los botones de aprobar o rechazar en el mensaje original de cada solicitud.";
+    return $txt;
+}
+
+function adminTextoReferentesV61() {
+    try {
+        $pdo=getRailwayPdo();
+        $rows=$pdo->query("SELECT c.id,c.nombre,c.telegram, COUNT(r.id) total, SUM(CASE WHEN r.estado='Activo' AND (r.fecha_caducidad IS NULL OR r.fecha_caducidad>=CURDATE()) THEN 1 ELSE 0 END) activos FROM clientes c LEFT JOIN referidos r ON r.cliente_id=c.id GROUP BY c.id,c.nombre,c.telegram ORDER BY activos DESC,c.nombre ASC LIMIT 50")->fetchAll();
+        $txt="👥 REFERENTES MDPRIME\n\n📌 Total mostrados: ".count($rows)."\n";
+        if (!$rows) return $txt."\nNo hay referentes registrados.";
+        foreach($rows as $i=>$r){
+            $txt.="\n━━━━━━━━━━━━━━\n".($i+1).". 👤 ".($r["nombre"]??"Sin nombre")."\n🟢 Activos: ".(int)($r["activos"]??0)." · 👥 Total: ".(int)($r["total"]??0);
+            if (!empty($r["telegram"])) $txt.="\n📲 @".ltrim($r["telegram"],"@");
+        }
+        return $txt;
+    } catch(Throwable $e){ return "❌ No se pudieron cargar los referentes.\n\n".$e->getMessage(); }
+}
+
+function adminTextoClientesV61() {
+    try {
+        $pdo=getRailwayPdo();
+        $normales=(int)$pdo->query("SELECT COUNT(*) FROM clientes_normales")->fetchColumn();
+        $referidos=(int)$pdo->query("SELECT COUNT(*) FROM referidos")->fetchColumn();
+        $actNorm=(int)$pdo->query("SELECT COUNT(*) FROM clientes_normales WHERE estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad>=CURDATE())")->fetchColumn();
+        $actRef=(int)$pdo->query("SELECT COUNT(*) FROM referidos WHERE estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad>=CURDATE())")->fetchColumn();
+        $rows=$pdo->query("SELECT nombre,estado,fecha_caducidad,'Normal' tipo FROM clientes_normales UNION ALL SELECT nombre,estado,fecha_caducidad,'Referido' tipo FROM referidos ORDER BY fecha_caducidad ASC LIMIT 40")->fetchAll();
+        $txt="👤 CLIENTES MDPRIME\n\n👤 Normales: $normales · 🟢 $actNorm activos\n👥 Referidos: $referidos · 🟢 $actRef activos\n📌 Total: ".($normales+$referidos)."\n";
+        foreach($rows as $i=>$r){ $txt.="\n━━━━━━━━━━━━━━\n".($i+1).". ".estadoIcono($r["estado"]??"")." ".($r["nombre"]??"Sin nombre")."\n🏷️ ".$r["tipo"]." · 📅 ".(!empty($r["fecha_caducidad"])?date("d/m/Y",strtotime($r["fecha_caducidad"])):"Sin fecha"); }
+        return $txt;
+    } catch(Throwable $e){ return "❌ No se pudieron cargar los clientes.\n\n".$e->getMessage(); }
+}
+
+function adminTextoEstadisticasV61($states) {
+    try {
+        $pdo=getRailwayPdo();
+        $refs=(int)$pdo->query("SELECT COUNT(*) FROM clientes")->fetchColumn();
+        $norm=(int)$pdo->query("SELECT COUNT(*) FROM clientes_normales")->fetchColumn();
+        $referidos=(int)$pdo->query("SELECT COUNT(*) FROM referidos")->fetchColumn();
+        $activos=(int)$pdo->query("SELECT (SELECT COUNT(*) FROM clientes_normales WHERE estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad>=CURDATE())) + (SELECT COUNT(*) FROM referidos WHERE estado='Activo' AND (fecha_caducidad IS NULL OR fecha_caducidad>=CURDATE()))")->fetchColumn();
+        $cad7=(int)$pdo->query("SELECT (SELECT COUNT(*) FROM clientes_normales WHERE fecha_caducidad BETWEEN CURDATE() AND DATE_ADD(CURDATE(),INTERVAL 7 DAY)) + (SELECT COUNT(*) FROM referidos WHERE fecha_caducidad BETWEEN CURDATE() AND DATE_ADD(CURDATE(),INTERVAL 7 DAY))")->fetchColumn();
+        $ren=count($states["_renovaciones_pendientes"]??[]);
+        $sol=count($states["_nuevas_cuentas_pendientes"]??[])+count($states["_multicuentas_pendientes"]??[]);
+        return "📊 ESTADÍSTICAS MDPRIME\n\n👑 Referentes: $refs\n👤 Clientes normales: $norm\n👥 Referidos: $referidos\n🟢 Cuentas activas: $activos\n⏳ Caducan en 7 días: $cad7\n📩 Solicitudes pendientes: $sol\n💳 Renovaciones pendientes: $ren";
+    } catch(Throwable $e){ return "❌ No se pudieron cargar las estadísticas.\n\n".$e->getMessage(); }
+}
+
+function adminTextoConfiguracionV61() {
+    try {
+        $pdo=getRailwayPdo();
+        $niveles=$pdo->query("SELECT nivel,min_activos,trimestral,semestral,anual FROM configuracion_niveles ORDER BY min_activos ASC")->fetchAll();
+        $txt="⚙️ CONFIGURACIÓN MDPRIME\n\n💶 Tarifas normales\n3 meses → ".renovarPrecioNormal(3)."€\n6 meses → ".renovarPrecioNormal(6)."€\n12 meses → ".renovarPrecioNormal(12)."€\n\n🏆 Niveles de referentes";
+        foreach($niveles as $n){ $txt.="\n\n".nivelIcono($n["nivel"]??"")." ".($n["nivel"]??"Sin nivel")." · desde ".(int)($n["min_activos"]??0)." activos\n3M ".$n["trimestral"]."€ · 6M ".$n["semestral"]."€ · 12M ".$n["anual"]."€"; }
+        return $txt;
+    } catch(Throwable $e){ return "❌ No se pudo cargar la configuración.\n\n".$e->getMessage(); }
+}
+
 function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
     global $admin_id;
     if ((string)$chat_id === (string)$admin_id) {
@@ -3804,8 +3893,14 @@ Cargando programación…",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callb
     }
     if (strpos($callback_data,"adminpanel_")===0) {
         if ((string)$chat_id !== (string)$admin_id) { http_response_code(200); exit; }
-        $titulos=["adminpanel_solicitudes"=>"📩 SOLICITUDES","adminpanel_renovaciones"=>"💳 RENOVACIONES","adminpanel_referentes"=>"👥 REFERENTES","adminpanel_clientes"=>"👤 CLIENTES","adminpanel_estadisticas"=>"📊 ESTADÍSTICAS","adminpanel_configuracion"=>"⚙️ CONFIGURACIÓN"];
-        editMessageText($chat_id,$message_id,($titulos[$callback_data]??"ADMINISTRACIÓN")."\n\nLas gestiones y avisos de esta sección seguirán llegando al chat del administrador.",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]);
+        if ($callback_data === "adminpanel_solicitudes") $txt = adminTextoSolicitudesV61($states);
+        elseif ($callback_data === "adminpanel_renovaciones") $txt = adminTextoRenovacionesV61($states);
+        elseif ($callback_data === "adminpanel_referentes") $txt = adminTextoReferentesV61();
+        elseif ($callback_data === "adminpanel_clientes") $txt = adminTextoClientesV61();
+        elseif ($callback_data === "adminpanel_estadisticas") $txt = adminTextoEstadisticasV61($states);
+        elseif ($callback_data === "adminpanel_configuracion") $txt = adminTextoConfiguracionV61();
+        else $txt = "⚠️ Sección no disponible.";
+        editMessageText($chat_id,$message_id,$txt,["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]);
         http_response_code(200); exit;
     }
 
