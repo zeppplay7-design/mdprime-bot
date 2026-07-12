@@ -3617,6 +3617,24 @@ function aplicarNuevoReferidoRailway($usuario, $meses, $referente_id, $from_clie
    CENTRO DE AYUDA / SOPORTE
 ========================= */
 
+
+function tecladoAtrasGlobalV65($texto = "⬅️ Atrás") {
+    return [
+        "inline_keyboard" => [
+            [["text" => $texto, "callback_data" => "nav_atras"]]
+        ]
+    ];
+}
+
+function tecladoAtrasYCancelarV65() {
+    return [
+        "inline_keyboard" => [
+            [["text" => "⬅️ Atrás", "callback_data" => "nav_atras"]],
+            [["text" => "❌ Cancelar", "callback_data" => "nav_cancelar"]]
+        ]
+    ];
+}
+
 function soporteMenuKeyboard() {
     return [
         "inline_keyboard" => [
@@ -3624,7 +3642,8 @@ function soporteMenuKeyboard() {
             [["text" => "🚫 Bloqueos de instalación", "callback_data" => "sup_bloqueos"]],
             [["text" => "🌐 Problemas de conexión", "callback_data" => "sup_conexion"]],
             [["text" => "📺 Dispositivos compatibles", "callback_data" => "sup_dispositivos"]],
-            [["text" => "👨‍💻 Contactar con soporte", "callback_data" => "sup_contactar"]]
+            [["text" => "👨‍💻 Contactar con soporte", "callback_data" => "sup_contactar"]],
+            [["text" => "⬅️ Atrás", "callback_data" => "nav_atras"]]
         ]
     ];
 }
@@ -3633,7 +3652,8 @@ function soporteRespuestaKeyboard() {
     return [
         "inline_keyboard" => [
             [["text" => "⬅️ Volver a preguntas", "callback_data" => "sup_menu"]],
-            [["text" => "👨‍💻 Contactar con soporte", "callback_data" => "sup_contactar"]]
+            [["text" => "👨‍💻 Contactar con soporte", "callback_data" => "sup_contactar"]],
+            [["text" => "🏠 Volver al menú", "callback_data" => "nav_atras"]]
         ]
     ];
 }
@@ -3958,9 +3978,9 @@ function mostrarPanelClienteNormalV60($chat_id, $usuario, $editar_id = null) {
 
 function enviarAgendaV61($chat_id) {
     $json = getAgendaJsonCache();
-    if (!$json) { sendMessage($chat_id, "❌ No se pudo cargar la agenda deportiva."); return; }
+    if (!$json) { sendInlineMessage($chat_id, "❌ No se pudo cargar la agenda deportiva.", tecladoAtrasGlobalV65()); return; }
     $agenda = json_decode($json, true);
-    if (empty($agenda["events"])) { sendMessage($chat_id, "⚠️ No hay eventos disponibles."); return; }
+    if (empty($agenda["events"])) { sendInlineMessage($chat_id, "⚠️ No hay eventos disponibles.", tecladoAtrasGlobalV65()); return; }
     $primerDia = $agenda["events"][0]["fecha"] ?? "Hoy";
     $eventos = array_values(array_filter($agenda["events"], function($e) use ($primerDia) { return ($e["fecha"] ?? "") === $primerDia; }));
     $msg = "🏆 AGENDA DEPORTIVA MDPRIME
@@ -3983,7 +4003,8 @@ function enviarAgendaV61($chat_id) {
 ";
         if (mb_strlen($msg, "UTF-8") > 3500) break;
     }
-    sendLongMessage($chat_id, $msg);
+    sendLongMessage($chat_id, $msg, false);
+    sendInlineMessage($chat_id, "Navegación:", tecladoAtrasGlobalV65());
 }
 
 function tecladoPanelReferidoV61() {
@@ -4204,6 +4225,17 @@ if (isset($update["callback_query"])) {
 
     $states = loadStates($state_file);
 
+    if ($callback_data === "nav_atras") {
+        clearUserMode($state_file, $states, $chat_id);
+        mostrarMenuPrincipalV61($chat_id, $states, $message_id);
+        http_response_code(200); exit;
+    }
+    if ($callback_data === "nav_cancelar") {
+        clearUserMode($state_file, $states, $chat_id);
+        mostrarMenuPrincipalV61($chat_id, $states, $message_id);
+        http_response_code(200); exit;
+    }
+
     if ($callback_data === "menu_inicio") { mostrarMenuPrincipalV61($chat_id, $states, $message_id); http_response_code(200); exit; }
     if ($callback_data === "admin_abrir_panel") {
         if (!esAdministradorV62($chat_id)) { answerCallbackQuery($callback_id, "No autorizado."); http_response_code(200); exit; }
@@ -4223,20 +4255,20 @@ if (isset($update["callback_query"])) {
     }
     if ($callback_data === "menu_identificate") {
         setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", "/micuenta");
-        editMessageText($chat_id, $message_id, "👤 IDENTIFÍCATE\n\nEscribe tu usuario MDPRIME. El bot lo recordará para las próximas veces.");
+        editMessageText($chat_id, $message_id, "👤 IDENTIFÍCATE\n\nEscribe tu usuario MDPRIME. El bot lo recordará para las próximas veces.", tecladoAtrasYCancelarV65());
         http_response_code(200); exit;
     }
     if ($callback_data === "menu_nuevo_usuario") {
         clearUserMode($state_file, $states, $chat_id);
         setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
-        editMessageText($chat_id, $message_id, "🆕 CREAR CUENTA NUEVA MDPRIME\n\nEscribe cómo quieres que se llame tu usuario.\n\nEjemplo:\nMiguelTV\n\n⚠️ Si el nombre ya existe, el bot te indicará que debes renovarlo. La cuenta no se activará hasta completar el pago y la aprobación.");
+        editMessageText($chat_id, $message_id, "🆕 CREAR CUENTA NUEVA MDPRIME\n\nEscribe cómo quieres que se llame tu usuario.\n\nEjemplo:\nMiguelTV\n\n⚠️ Si el nombre ya existe, el bot te indicará que debes renovarlo. La cuenta no se activará hasta completar el pago y la aprobación.", tecladoAtrasYCancelarV65());
         http_response_code(200); exit;
     }
-    if ($callback_data === "menu_apps") { editMessageText($chat_id,$message_id,"📲 APPS POR DOWNLOADER\n\n🔥 V9 → 6713896\n📺 OTT → 7669716\n⚡ V8 → 6541023",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); http_response_code(200); exit; }
+    if ($callback_data === "menu_apps") { editMessageText($chat_id,$message_id,"📲 APPS POR DOWNLOADER\n\n🔥 V9 → 6713896\n📺 OTT → 7669716\n⚡ V8 → 6541023",tecladoAtrasGlobalV65()); http_response_code(200); exit; }
     if ($callback_data === "menu_agenda") { editMessageText($chat_id,$message_id,"⚽ AGENDA DEPORTIVA
 
-Cargando programación…",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); enviarAgendaV61($chat_id); http_response_code(200); exit; }
-    if ($callback_data === "menu_soporte") { setUserMode($state_file,$states,$chat_id,"soporte"); editMessageText($chat_id,$message_id,"💬 SOPORTE\n\nEscribe tu consulta y será enviada a administración."); http_response_code(200); exit; }
+Cargando programación…",tecladoAtrasGlobalV65()); enviarAgendaV61($chat_id); http_response_code(200); exit; }
+    if ($callback_data === "menu_soporte") { clearUserMode($state_file,$states,$chat_id); editMessageText($chat_id,$message_id,soporteMenuTexto(),soporteMenuKeyboard()); http_response_code(200); exit; }
     if (strpos($callback_data,"referidopanel_")===0) {
         $usuario=getSavedUsuario($states,$chat_id); $data=consultarClienteApi($usuario);
         if ($callback_data==="referidopanel_cuenta") { editMessageText($chat_id,$message_id,formatMiCuenta($data),["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); }
@@ -4259,7 +4291,7 @@ Cargando programación…",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callb
     if (strpos($callback_data, "normalpanel_") === 0) {
         $usuario = getSavedUsuario($states, $chat_id);
         if ($usuario === "") {
-            editMessageText($chat_id, $message_id, "⚠️ Primero vincula tu usuario con /micuenta.");
+            editMessageText($chat_id, $message_id, "⚠️ Primero vincula tu usuario con /identificate.", tecladoAtrasGlobalV65());
             http_response_code(200); exit;
         }
         $dataNormal = datosClienteNormalV60($usuario);
@@ -4313,7 +4345,7 @@ Pulsa /soporte y explica tu incidencia.", tecladoVolverPanelClienteNormalV60());
     if (strpos($callback_data, "refpanel_") === 0) {
         $usuario = getSavedUsuario($states, $chat_id);
         if ($usuario === "") {
-            editMessageText($chat_id, $message_id, "⚠️ Primero vincula tu usuario con /micuenta.");
+            editMessageText($chat_id, $message_id, "⚠️ Primero vincula tu usuario con /identificate.", tecladoAtrasGlobalV65());
             http_response_code(200); exit;
         }
         $dataRef = datosReferenteV60($usuario);
@@ -4409,7 +4441,7 @@ Para cancelar: /cancelar");
         }
         if (preg_match('/^refpanel_renovarid_(\d+)$/',$callback_data,$m)) {
             $ref=buscarFichaReferidoV60($dataRef,(int)$m[1]);
-            if(!$ref){ editMessageText($chat_id,$message_id,"⚠️ Referido no encontrado."); http_response_code(200); exit; }
+            if(!$ref){ editMessageText($chat_id,$message_id,"⚠️ Referido no encontrado.",tecladoAtrasGlobalV65()); http_response_code(200); exit; }
             pedirConfirmacionNombreProceso($state_file,$states,$chat_id,$ref["nombre"]??"","renovar");
             http_response_code(200); exit;
         }
@@ -4493,7 +4525,7 @@ Para cancelar: /cancelar");
             editMessageText($chat_id, $message_id, soporteTextoDispositivos(), soporteRespuestaKeyboard());
         } elseif ($callback_data === "sup_contactar") {
             setUserMode($state_file, $states, $chat_id, "soporte");
-            editMessageText($chat_id, $message_id, "👨‍💻 CONTACTAR CON SOPORTE\n\nDescribe tu problema con el mayor detalle posible.\n\nPuedes enviar texto, foto o captura de pantalla.");
+            editMessageText($chat_id, $message_id, "👨‍💻 CONTACTAR CON SOPORTE\n\nDescribe tu problema con el mayor detalle posible.\n\nPuedes enviar texto, foto o captura de pantalla.", tecladoAtrasYCancelarV65());
         }
 
         http_response_code(200);
