@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V68-BOTON-ABRIR-BOT-GRUPOS-20260712";
+$bot_version = "MDPRIME-BOT-V67-SOPORTE-CHAT-DIRECTO-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -123,52 +123,28 @@ function telegramHtml($text) {
 }
 
 function configurarComandosTelegram() {
-    // Menú completo únicamente en el chat privado del bot.
-    $commands_privado = [
+    $commands = [
         ["command" => "start", "description" => "🏠 Abrir MDPRIME"],
         ["command" => "identificate", "description" => "👤 Identificar cuenta"],
-        ["command" => "micuenta", "description" => "👤 Mi cuenta"],
-        ["command" => "caducidad", "description" => "📅 Consultar caducidad"],
-        ["command" => "misreferidos", "description" => "👥 Mis referidos"],
-        ["command" => "renovar", "description" => "🔄 Renovar cuenta"],
         ["command" => "nuevo", "description" => "🆕 Crear nuevo usuario"],
-        ["command" => "multicuenta", "description" => "💎 Plan multicuenta"],
-        ["command" => "referir", "description" => "🤝 Unirme a un referente"],
-        ["command" => "planes", "description" => "💶 Planes premium"],
-        ["command" => "referidos", "description" => "🏆 Referidos VIP"],
-        ["command" => "agenda", "description" => "🏆 Agenda deportiva"],
-        ["command" => "apps", "description" => "📲 Aplicaciones"],
-        ["command" => "soporte", "description" => "🆘 Soporte"],
         ["command" => "cancelar", "description" => "❌ Cancelar proceso"]
-    ];
-
-    // En grupos solo se muestran estas tres opciones públicas.
-    $commands_grupo = [
-        ["command" => "agenda", "description" => "🏆 Agenda deportiva"],
-        ["command" => "apps", "description" => "📲 Aplicaciones"],
-        ["command" => "soporte", "description" => "🆘 Soporte"]
     ];
 
     telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "default"])]);
     telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "all_private_chats"])]);
-    telegramRequest("deleteMyCommands", ["scope" => json_encode(["type" => "all_group_chats"])]);
 
     $global = telegramRequest("setMyCommands", [
-        "commands" => json_encode($commands_privado, JSON_UNESCAPED_UNICODE),
+        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
         "scope" => json_encode(["type" => "default"])
     ]);
     $privado = telegramRequest("setMyCommands", [
-        "commands" => json_encode($commands_privado, JSON_UNESCAPED_UNICODE),
+        "commands" => json_encode($commands, JSON_UNESCAPED_UNICODE),
         "scope" => json_encode(["type" => "all_private_chats"])
     ]);
-    $grupos = telegramRequest("setMyCommands", [
-        "commands" => json_encode($commands_grupo, JSON_UNESCAPED_UNICODE),
-        "scope" => json_encode(["type" => "all_group_chats"])
-    ]);
 
-    return (!empty($privado["ok"]) && !empty($grupos["ok"]))
-        ? ["ok" => true, "global" => $global, "privado" => $privado, "grupos" => $grupos]
-        : ["ok" => false, "global" => $global, "privado" => $privado, "grupos" => $grupos];
+    return (!empty($global["ok"]) || !empty($privado["ok"]))
+        ? ["ok" => true, "global" => $global, "privado" => $privado]
+        : ["ok" => false, "global" => $global, "privado" => $privado];
 }
 
 function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
@@ -183,33 +159,16 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     }
 
     if ($keyboard) {
-        $es_grupo = ((int)$chat_id < 0);
-
-        if ($es_grupo) {
-            // Teclado reducido para grupos: sustituye cualquier teclado privado anterior.
-            $data["reply_markup"] = json_encode([
-                "keyboard" => [
-                    [["text" => "/agenda"]],
-                    [["text" => "/apps"]],
-                    [["text" => "/soporte"]],
-                    [["text" => "🏠 MDPRIME Bot"]]
-                ],
-                "resize_keyboard" => true,
-                "one_time_keyboard" => false
-            ]);
-        } else {
-            // Teclado completo únicamente en el chat privado del bot.
-            $data["reply_markup"] = json_encode([
-                "keyboard" => [
-                    [["text" => "/start"]],
-                    [["text" => "/identificate"]],
-                    [["text" => "🆕 Nuevo usuario"]],
-                    [["text" => "/cancelar"]]
-                ],
-                "resize_keyboard" => true,
-                "one_time_keyboard" => false
-            ]);
-        }
+        $data["reply_markup"] = json_encode([
+            "keyboard" => [
+                [["text" => "/start"]],
+                [["text" => "/identificate"]],
+                [["text" => "🆕 Nuevo usuario"]],
+                [["text" => "/cancelar"]]
+            ],
+            "resize_keyboard" => true,
+            "one_time_keyboard" => false
+        ]);
     }
 
     return telegramRequest("sendMessage", $data);
@@ -673,31 +632,6 @@ function enviarAvisoAccionPrivadaGrupo($chat_id, $message_id = null) {
         deleteMessage($chat_id, $message_id);
     }
 
-    /*
-     * IMPORTANTE:
-     * Telegram conserva el último ReplyKeyboard enviado en el grupo.
-     * Por eso primero forzamos el teclado público correcto del grupo
-     * y después enviamos el aviso privado con botón inline.
-     */
-    $menu = telegramRequest("sendMessage", [
-        "chat_id" => $chat_id,
-        "text" => "📌 Menú del grupo actualizado.",
-        "disable_notification" => true,
-        "reply_markup" => json_encode([
-            "keyboard" => [
-                [["text" => "/agenda"]],
-                [["text" => "/apps"]],
-                [["text" => "/soporte"]],
-                [["text" => "🏠 MDPRIME Bot"]]
-            ],
-            "resize_keyboard" => true,
-            "one_time_keyboard" => false,
-            "is_persistent" => true
-        ], JSON_UNESCAPED_UNICODE)
-    ]);
-
-    $menu_id = $menu["result"]["message_id"] ?? null;
-
     $texto = "🔒 ACCIÓN PRIVADA
 
 Por motivos de seguridad y protección de tus datos, esta acción solo está disponible en el chat privado del bot.
@@ -716,13 +650,9 @@ Pulsa el botón para continuar.";
     $sent = sendInlineMessage($chat_id, $texto, $teclado);
     $aviso_id = $sent["result"]["message_id"] ?? null;
 
-    // Borrar solo los mensajes informativos; el teclado reducido queda aplicado.
-    sleep(8);
     if ($aviso_id) {
+        sleep(8);
         deleteMessage($chat_id, $aviso_id);
-    }
-    if ($menu_id) {
-        deleteMessage($chat_id, $menu_id);
     }
 }
 
@@ -5458,6 +5388,22 @@ if (!isset($update["message"])) {
 
 $chat_id = $update["message"]["chat"]["id"];
 $text = trim($update["message"]["text"] ?? "");
+
+if ($text == "🏠 MDPRIME Bot") {
+    telegramRequest("sendMessage", [
+        "chat_id"=>$chat_id,
+        "text"=>"Pulsa el botón:",
+        "reply_markup"=>json_encode([
+            "inline_keyboard"=>[[[
+                "text"=>"🤖 Abrir MDPRIME Bot",
+                "url"=>"https://t.me/MDPRIME_SUPPOR_BOT"
+            ]]]
+        ], JSON_UNESCAPED_UNICODE)
+    ]);
+    exit;
+}
+
+
 $message_id = $update["message"]["message_id"] ?? null;
 
 $states = loadStates($state_file);
@@ -5575,12 +5521,9 @@ if ($text === "") {
 $command = strtolower(trim(explode(" ", $text)[0]));
 $command = explode("@", $command)[0];
 
-// Botones visibles del teclado.
+// Botón visible del teclado: reutiliza exactamente el flujo existente de /nuevo.
 if (trim($text) === "🆕 Nuevo usuario") {
     $command = "/nuevo";
-}
-if (trim($text) === "🏠 MDPRIME Bot") {
-    $command = "/abrirbot";
 }
 
 $parts_text = explode(" ", $text, 2);
@@ -5590,7 +5533,7 @@ $chat_type = $update["message"]["chat"]["type"] ?? "private";
 
 // En grupos, ignorar cualquier texto normal que no sea comando.
 // Así el bot no responde "Comando no reconocido" a conversaciones normales.
-if ($chat_type !== "private" && substr($text, 0, 1) !== "/" && $command !== "/abrirbot") {
+if ($chat_type !== "private" && substr($text, 0, 1) !== "/") {
     http_response_code(200);
     exit;
 }
@@ -5600,7 +5543,6 @@ $message_id = $update["message"]["message_id"] ?? null;
 // Comandos privados usados dentro de grupos:
 // se borra el comando, se muestra aviso con botón al privado y se borra el aviso.
 $private_group_commands = [
-    "/start",
     "/identificate",
     "/cambiarusuario",
     "/micuenta",
@@ -6260,7 +6202,7 @@ Detalle:
         if (!empty($resultadoComandos["ok"])) {
             sendMessage($chat_id, "✅ Menú de comandos actualizado.
 
-El menú privado completo y el menú reducido de grupos han sido regenerados.
+El menú global y el menú privado han sido regenerados.
 
 Pulsa /start y cierra/abre el chat para refrescar Telegram.");
         } else {
@@ -6491,23 +6433,6 @@ case "/renovar":
 
         clearUserMode($state_file, $states, $chat_id);
         sendInlineMessage($chat_id, soporteMenuTexto(), soporteMenuKeyboard());
-        break;
-
-    case "/abrirbot":
-        $tecladoAbrirBot = [
-            "inline_keyboard" => [
-                [[
-                    "text" => "🔒 Abrir MDPRIME Bot",
-                    "url" => $bot_link."?start=grupo"
-                ]]
-            ]
-        ];
-
-        sendInlineMessage(
-            $chat_id,
-            "🤖 Accede al chat privado de MDPRIME Bot pulsando el botón de abajo.",
-            $tecladoAbrirBot
-        );
         break;
 
     case "/agenda":
