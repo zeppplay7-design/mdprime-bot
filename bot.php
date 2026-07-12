@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V67-SOPORTE-CHAT-DIRECTO-20260712";
+$bot_version = "MDPRIME-BOT-V68-MENU-PHP-ICONOS-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -161,10 +161,10 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     if ($keyboard) {
         $data["reply_markup"] = json_encode([
             "keyboard" => [
-                [["text" => "/start"]],
-                [["text" => "/identificate"]],
+                [["text" => "🏠 Inicio"]],
+                [["text" => "👤 Identificarme"]],
                 [["text" => "🆕 Nuevo usuario"]],
-                [["text" => "/cancelar"]]
+                [["text" => "❌ Cancelar"]]
             ],
             "resize_keyboard" => true,
             "one_time_keyboard" => false
@@ -5521,9 +5521,17 @@ if ($text === "") {
 $command = strtolower(trim(explode(" ", $text)[0]));
 $command = explode("@", $command)[0];
 
-// Botón visible del teclado: reutiliza exactamente el flujo existente de /nuevo.
-if (trim($text) === "🆕 Nuevo usuario") {
-    $command = "/nuevo";
+// Botones visibles del teclado PHP: reutilizan los comandos existentes.
+$botones_menu_php = [
+    "🏠 Inicio" => "/start",
+    "👤 Identificarme" => "/identificate",
+    "🆕 Nuevo usuario" => "/nuevo",
+    "❌ Cancelar" => "/cancelar"
+];
+
+$texto_boton = trim($text);
+if (isset($botones_menu_php[$texto_boton])) {
+    $command = $botones_menu_php[$texto_boton];
 }
 
 $parts_text = explode(" ", $text, 2);
