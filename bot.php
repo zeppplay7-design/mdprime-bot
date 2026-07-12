@@ -672,6 +672,30 @@ function enviarAvisoAccionPrivadaGrupo($chat_id, $message_id = null) {
         deleteMessage($chat_id, $message_id);
     }
 
+    /*
+     * IMPORTANTE:
+     * Telegram conserva el último ReplyKeyboard enviado en el grupo.
+     * Por eso primero forzamos el teclado público correcto del grupo
+     * y después enviamos el aviso privado con botón inline.
+     */
+    $menu = telegramRequest("sendMessage", [
+        "chat_id" => $chat_id,
+        "text" => "📌 Menú del grupo actualizado.",
+        "disable_notification" => true,
+        "reply_markup" => json_encode([
+            "keyboard" => [
+                [["text" => "/agenda"]],
+                [["text" => "/apps"]],
+                [["text" => "/soporte"]]
+            ],
+            "resize_keyboard" => true,
+            "one_time_keyboard" => false,
+            "is_persistent" => true
+        ], JSON_UNESCAPED_UNICODE)
+    ]);
+
+    $menu_id = $menu["result"]["message_id"] ?? null;
+
     $texto = "🔒 ACCIÓN PRIVADA
 
 Por motivos de seguridad y protección de tus datos, esta acción solo está disponible en el chat privado del bot.
@@ -690,9 +714,13 @@ Pulsa el botón para continuar.";
     $sent = sendInlineMessage($chat_id, $texto, $teclado);
     $aviso_id = $sent["result"]["message_id"] ?? null;
 
+    // Borrar solo los mensajes informativos; el teclado reducido queda aplicado.
+    sleep(8);
     if ($aviso_id) {
-        sleep(8);
         deleteMessage($chat_id, $aviso_id);
+    }
+    if ($menu_id) {
+        deleteMessage($chat_id, $menu_id);
     }
 }
 
