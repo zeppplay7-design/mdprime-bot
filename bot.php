@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V70-SELECTOR-1-2-3-USUARIOS-NUEVOS-20260712";
+$bot_version = "MDPRIME-BOT-V71-FORZAR-MENU-TODOS-GRUPOS-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -159,16 +159,33 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     }
 
     if ($keyboard) {
-        $data["reply_markup"] = json_encode([
-            "keyboard" => [
-                [["text" => "🏠 Inicio"]],
-                [["text" => "👤 Identificarme"]],
-                [["text" => "🆕 Nuevo usuario"]],
-                [["text" => "❌ Cancelar"]]
-            ],
-            "resize_keyboard" => true,
-            "one_time_keyboard" => false
-        ]);
+        $es_grupo = ((int)$chat_id < 0);
+
+        if ($es_grupo) {
+            $data["reply_markup"] = json_encode([
+                "keyboard" => [
+                    [["text" => "/agenda"]],
+                    [["text" => "/apps"]],
+                    [["text" => "/soporte"]],
+                    [["text" => "🏠 MDPRIME Bot"]]
+                ],
+                "resize_keyboard" => true,
+                "one_time_keyboard" => false,
+                "is_persistent" => true
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            $data["reply_markup"] = json_encode([
+                "keyboard" => [
+                    [["text" => "🏠 Inicio"]],
+                    [["text" => "👤 Identificarme"]],
+                    [["text" => "🆕 Nuevo usuario"]],
+                    [["text" => "❌ Cancelar"]]
+                ],
+                "resize_keyboard" => true,
+                "one_time_keyboard" => false,
+                "is_persistent" => true
+            ], JSON_UNESCAPED_UNICODE);
+        }
     }
 
     return telegramRequest("sendMessage", $data);
@@ -655,6 +672,26 @@ Pulsa el botón para continuar.";
         deleteMessage($chat_id, $aviso_id);
     }
 }
+
+function forzarMenuGrupo($chat_id) {
+    return telegramRequest("sendMessage", [
+        "chat_id" => $chat_id,
+        "text" => "📌 Menú del grupo actualizado.",
+        "disable_notification" => true,
+        "reply_markup" => json_encode([
+            "keyboard" => [
+                [["text" => "/agenda"]],
+                [["text" => "/apps"]],
+                [["text" => "/soporte"]],
+                [["text" => "🏠 MDPRIME Bot"]]
+            ],
+            "resize_keyboard" => true,
+            "one_time_keyboard" => false,
+            "is_persistent" => true
+        ], JSON_UNESCAPED_UNICODE)
+    ]);
+}
+
 
 function sendLongMessage($chat_id, $text, $keyboard = true) {
     $max = 3900;
@@ -5659,6 +5696,26 @@ $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
 
 $chat_type = $update["message"]["chat"]["type"] ?? "private";
+
+// En grupos, estos comandos fuerzan siempre el teclado público.
+// Se hace antes de cualquier salida o aviso privado.
+if ($chat_type !== "private" && in_array($command, ["/start", "/agenda", "/apps", "/soporte"], true)) {
+    forzarMenuGrupo($chat_id);
+}
+
+// Botón del teclado del grupo para abrir el bot privado.
+if ($chat_type !== "private" && trim($text) === "🏠 MDPRIME Bot") {
+    sendInlineMessage($chat_id, "Pulsa el botón para abrir el chat privado:", [
+        "inline_keyboard" => [
+            [[
+                "text" => "🤖 Abrir MDPRIME Bot",
+                "url" => $bot_link
+            ]]
+        ]
+    ]);
+    http_response_code(200);
+    exit;
+}
 
 // En grupos, ignorar cualquier texto normal que no sea comando.
 // Así el bot no responde "Comando no reconocido" a conversaciones normales.
