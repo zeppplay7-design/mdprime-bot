@@ -162,6 +162,7 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
             "keyboard" => [
                 [["text" => "/start"]],
                 [["text" => "/identificate"]],
+                [["text" => "🆕 Nuevo usuario"]],
                 [["text" => "/cancelar"]]
             ],
             "resize_keyboard" => true,
@@ -4013,6 +4014,7 @@ function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
         $txt = "🔥 BIENVENIDO A MDPRIME\n\nPara acceder a tu menú, identifícate una sola vez. El bot recordará tu cuenta.";
         $kb = ["inline_keyboard" => [
             [["text" => "👤 Identificarme", "callback_data" => "menu_identificate"]],
+            [["text" => "🆕 Nuevo usuario", "callback_data" => "menu_nuevo_usuario"]],
             [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
             [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
             [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]]
@@ -4091,6 +4093,12 @@ if (isset($update["callback_query"])) {
     if ($callback_data === "menu_identificate") {
         setUserMode($state_file, $states, $chat_id, "esperando_usuario_mdprime", "/micuenta");
         editMessageText($chat_id, $message_id, "👤 IDENTIFÍCATE\n\nEscribe tu usuario MDPRIME. El bot lo recordará para las próximas veces.");
+        http_response_code(200); exit;
+    }
+    if ($callback_data === "menu_nuevo_usuario") {
+        clearUserMode($state_file, $states, $chat_id);
+        setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
+        editMessageText($chat_id, $message_id, "🆕 CREAR CUENTA NUEVA MDPRIME\n\nEscribe cómo quieres que se llame tu usuario.\n\nEjemplo:\nMiguelTV\n\n⚠️ Si el nombre ya existe, el bot te indicará que debes renovarlo. La cuenta no se activará hasta completar el pago y la aprobación.");
         http_response_code(200); exit;
     }
     if ($callback_data === "menu_apps") { editMessageText($chat_id,$message_id,"📲 APPS POR DOWNLOADER\n\n🔥 V9 → 6713896\n📺 OTT → 7669716\n⚡ V8 → 6541023",["inline_keyboard"=>[[["text"=>"⬅️ Atrás","callback_data"=>"menu_inicio"]]]]); http_response_code(200); exit; }
@@ -5167,6 +5175,11 @@ if ($text === "") {
 
 $command = strtolower(trim(explode(" ", $text)[0]));
 $command = explode("@", $command)[0];
+
+// Botón visible del teclado: reutiliza exactamente el flujo existente de /nuevo.
+if (trim($text) === "🆕 Nuevo usuario") {
+    $command = "/nuevo";
+}
 
 $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
