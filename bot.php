@@ -92,7 +92,7 @@ $db_port = 39553;
 $db_name = "railway";
 $db_user = "root";
 $db_pass = "ZRNWfdsxefUJrBMSJMchlLxzMHrAZjug";
-$bot_version = "MDPRIME-BOT-V71-FORZAR-MENU-TODOS-GRUPOS-20260712";
+$bot_version = "MDPRIME-BOT-V68-MENU-PHP-ICONOS-20260712";
 
 /* =========================
    FUNCIONES TELEGRAM
@@ -159,33 +159,16 @@ function sendMessage($chat_id, $text, $keyboard = true, $parse_mode = null) {
     }
 
     if ($keyboard) {
-        $es_grupo = ((int)$chat_id < 0);
-
-        if ($es_grupo) {
-            $data["reply_markup"] = json_encode([
-                "keyboard" => [
-                    [["text" => "/agenda"]],
-                    [["text" => "/apps"]],
-                    [["text" => "/soporte"]],
-                    [["text" => "🏠 MDPRIME Bot"]]
-                ],
-                "resize_keyboard" => true,
-                "one_time_keyboard" => false,
-                "is_persistent" => true
-            ], JSON_UNESCAPED_UNICODE);
-        } else {
-            $data["reply_markup"] = json_encode([
-                "keyboard" => [
-                    [["text" => "🏠 Inicio"]],
-                    [["text" => "👤 Identificarme"]],
-                    [["text" => "🆕 Nuevo usuario"]],
-                    [["text" => "❌ Cancelar"]]
-                ],
-                "resize_keyboard" => true,
-                "one_time_keyboard" => false,
-                "is_persistent" => true
-            ], JSON_UNESCAPED_UNICODE);
-        }
+        $data["reply_markup"] = json_encode([
+            "keyboard" => [
+                [["text" => "🏠 Inicio"]],
+                [["text" => "👤 Identificarme"]],
+                [["text" => "🆕 Nuevo usuario"]],
+                [["text" => "❌ Cancelar"]]
+            ],
+            "resize_keyboard" => true,
+            "one_time_keyboard" => false
+        ]);
     }
 
     return telegramRequest("sendMessage", $data);
@@ -672,26 +655,6 @@ Pulsa el botón para continuar.";
         deleteMessage($chat_id, $aviso_id);
     }
 }
-
-function forzarMenuGrupo($chat_id) {
-    return telegramRequest("sendMessage", [
-        "chat_id" => $chat_id,
-        "text" => "📌 Menú del grupo actualizado.",
-        "disable_notification" => true,
-        "reply_markup" => json_encode([
-            "keyboard" => [
-                [["text" => "/agenda"]],
-                [["text" => "/apps"]],
-                [["text" => "/soporte"]],
-                [["text" => "🏠 MDPRIME Bot"]]
-            ],
-            "resize_keyboard" => true,
-            "one_time_keyboard" => false,
-            "is_persistent" => true
-        ], JSON_UNESCAPED_UNICODE)
-    ]);
-}
-
 
 function sendLongMessage($chat_id, $text, $keyboard = true) {
     $max = 3900;
@@ -3127,16 +3090,6 @@ Pulsa el botón /soporte del menú principal y nuestro equipo te ayudará lo ant
 
 
 
-function nuevoCantidadUsuariosKeyboard() {
-    return ["inline_keyboard" => [
-        [["text" => "👤 1 usuario", "callback_data" => "nuevo_qty_1"]],
-        [["text" => "👥 2 usuarios", "callback_data" => "nuevo_qty_2"]],
-        [["text" => "👨‍👩‍👦 3 usuarios", "callback_data" => "nuevo_qty_3"]],
-        [["text" => "❌ Cancelar", "callback_data" => "nuevo_qty_cancel"]]
-    ]];
-}
-
-
 /* =========================
    PLAN MULTICUENTA (2 O 3 USUARIOS)
 ========================= */
@@ -4292,7 +4245,6 @@ function mostrarMenuPrincipalV61($chat_id, &$states, $editar_id = null) {
         $kb = ["inline_keyboard" => [
             [["text" => "👤 Identificarme", "callback_data" => "menu_identificate"]],
             [["text" => "🆕 Nuevo usuario", "callback_data" => "menu_nuevo_usuario"]],
-            [["text" => "👥 Contratar 2 o 3 usuarios", "callback_data" => "menu_multicuenta"]],
             [["text" => "📲 Apps", "callback_data" => "menu_apps"]],
             [["text" => "⚽ Agenda deportiva", "callback_data" => "menu_agenda"]],
             [["text" => "💬 Soporte", "callback_data" => "menu_soporte"]]
@@ -4439,17 +4391,6 @@ if (isset($update["callback_query"])) {
         clearUserMode($state_file, $states, $chat_id);
         setUserMode($state_file, $states, $chat_id, "nuevo_usuario");
         editMessageText($chat_id, $message_id, "🆕 CREAR CUENTA NUEVA MDPRIME\n\nEscribe cómo quieres que se llame tu usuario.\n\nEjemplo:\nMiguelTV\n\n⚠️ Si el nombre ya existe, el bot te indicará que debes renovarlo. La cuenta no se activará hasta completar el pago y la aprobación.", tecladoAtrasYCancelarV65());
-        http_response_code(200); exit;
-    }
-    if ($callback_data === "menu_multicuenta") {
-        clearUserMode($state_file, $states, $chat_id);
-        multiGuardarEstado($state_file, $states, $chat_id, [], "multi_cantidad");
-        editMessageText(
-            $chat_id,
-            $message_id,
-            "💎 PLAN MULTICUENTA\n\nContrata 2 o 3 usuarios nuevos con un único pago y un único comprobante.\n\n✅ Solo para clientes nuevos con tarifa normal.\n❌ No aplica a cuentas de referidos.\n\n¿Cuántos usuarios quieres contratar?",
-            multiCantidadKeyboard()
-        );
         http_response_code(200); exit;
     }
     if ($callback_data === "menu_apps") { editMessageText($chat_id,$message_id,"📲 APPS POR DOWNLOADER\n\n🔥 V9 → 6713896\n📺 OTT → 7669716\n⚡ V8 → 6541023",tecladoAtrasGlobalV65()); http_response_code(200); exit; }
@@ -4667,66 +4608,6 @@ Para cancelar: /cancelar");
         http_response_code(200); exit;
     }
 
-    if (strpos($callback_data, "nuevo_qty_") === 0) {
-        if ($callback_data === "nuevo_qty_cancel") {
-            limpiarNuevoEstado($state_file, $states, $chat_id);
-            editMessageText($chat_id, $message_id, "❌ Creación de cuenta cancelada.");
-            http_response_code(200); exit;
-        }
-
-        $cantidad_nueva = (int)str_replace("nuevo_qty_", "", $callback_data);
-        $nd = nuevoEstado($states, $chat_id);
-        $primer_usuario = trim((string)($nd["usuario"] ?? ""));
-
-        if ($primer_usuario === "" || !in_array($cantidad_nueva, [1,2,3], true)) {
-            editMessageText($chat_id, $message_id, "⚠️ No se pudo recuperar el usuario. Inicia de nuevo desde Nuevo usuario.");
-            http_response_code(200); exit;
-        }
-
-        if ($cantidad_nueva === 1) {
-            editMessageText(
-                $chat_id,
-                $message_id,
-                "🆕 CUENTA NUEVA MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Usuario solicitado:
-".$primer_usuario."
-
-━━━━━━━━━━━━━━━━━━
-
-Selecciona la duración:",
-                nuevoDuracionKeyboard($nd)
-            );
-            http_response_code(200); exit;
-        }
-
-        // Para 2 o 3 usuarios reutilizamos el flujo multicuenta,
-        // guardando como primer nombre el usuario ya escrito.
-        limpiarNuevoEstado($state_file, $states, $chat_id);
-        $md = [
-            "cantidad" => $cantidad_nueva,
-            "usuarios" => [$primer_usuario]
-        ];
-        multiGuardarEstado($state_file, $states, $chat_id, $md, "multi_duracion");
-
-        editMessageText(
-            $chat_id,
-            $message_id,
-            "💎 PLAN MULTICUENTA
-
-Has elegido ".$cantidad_nueva." usuarios.
-
-✅ Primer usuario guardado:
-".$primer_usuario."
-
-Selecciona la duración:",
-            multiDuracionKeyboard($cantidad_nueva)
-        );
-        http_response_code(200); exit;
-    }
-
     if (strpos($callback_data, "multi_") === 0) {
         $md=multiEstado($states,$chat_id);
         if($callback_data==="multi_cancel"){ multiLimpiarEstado($state_file,$states,$chat_id); editMessageText($chat_id,$message_id,"❌ Plan multicuenta cancelado."); http_response_code(200); exit; }
@@ -4737,22 +4618,8 @@ Selecciona la duración:",
         }
         if(strpos($callback_data,"multi_dur_")===0 && !empty($md["cantidad"])){
             $m=(int)str_replace("multi_dur_","",$callback_data); if(!in_array($m,[3,6,12],true)){http_response_code(200);exit;}
-            $md["meses"]=$m;
-            if (!isset($md["usuarios"]) || !is_array($md["usuarios"])) $md["usuarios"]=[];
-            multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre");
-
-            $siguiente = count($md["usuarios"]) + 1;
-            if ($siguiente > (int)$md["cantidad"]) {
-                multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_resumen");
-                editMessageText($chat_id,$message_id,multiResumenTexto($md),multiResumenKeyboard($md["cantidad"]));
-            } else {
-                editMessageText(
-                    $chat_id,
-                    $message_id,
-                    "👤 PASO ".$siguiente." DE ".$md["cantidad"]."\n\nEscribe el nombre de la siguiente cuenta nueva."
-                );
-            }
-            http_response_code(200); exit;
+            $md["meses"]=$m; $md["usuarios"]=[]; multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre");
+            editMessageText($chat_id,$message_id,"👤 PASO 1 DE ".$md["cantidad"]."\n\nEscribe el nombre de la primera cuenta nueva."); http_response_code(200); exit;
         }
         if($callback_data==="multi_name_no" && !empty($md)){
             unset($md["nombre_pendiente"]); multiGuardarEstado($state_file,$states,$chat_id,$md,"multi_nombre");
@@ -5046,13 +4913,8 @@ Tu cuenta ya aparece dentro de los referidos de ese referente.");
                 unset($states[$chat_id]["referir_context"]);
             }
             guardarNuevoEstado($state_file, $states, $chat_id, $nuevo_data);
-
-            // Las altas vinculadas a un referente continúan como una sola cuenta.
-            $es_alta_referida = !empty($nuevo_data["referente_id"]) || !empty($nuevo_data["referente_nombre"]);
-
-            if ($es_alta_referida) {
-                editMessageText($chat_id, $message_id,
-                    "🆕 CUENTA NUEVA MDPRIME
+            editMessageText($chat_id, $message_id,
+                "🆕 CUENTA NUEVA MDPRIME
 
 ━━━━━━━━━━━━━━━━━━
 
@@ -5068,28 +4930,8 @@ Primero debes elegir plan, pagar y enviar el comprobante.
 ━━━━━━━━━━━━━━━━━━
 
 Selecciona la duración:",
-                    nuevoDuracionKeyboard($nuevo_data)
-                );
-            } else {
-                editMessageText($chat_id, $message_id,
-                    "🆕 CUENTA NUEVA MDPRIME
-
-━━━━━━━━━━━━━━━━━━
-
-👤 Primer usuario:
-".$usuario_pendiente."
-
-🔐 Contraseña:
-La genera nuestro panel.
-
-⚠️ La cuenta todavía no se creará.
-
-━━━━━━━━━━━━━━━━━━
-
-¿Cuántos usuarios nuevos quieres contratar en el mismo pago?",
-                    nuevoCantidadUsuariosKeyboard()
-                );
-            }
+                nuevoDuracionKeyboard($nuevo_data)
+            );
         } else {
             editMessageText($chat_id, $message_id, "✅ Usuario confirmado:
 
@@ -5696,26 +5538,6 @@ $parts_text = explode(" ", $text, 2);
 $command_arg = isset($parts_text[1]) ? trim($parts_text[1]) : "";
 
 $chat_type = $update["message"]["chat"]["type"] ?? "private";
-
-// En grupos, estos comandos fuerzan siempre el teclado público.
-// Se hace antes de cualquier salida o aviso privado.
-if ($chat_type !== "private" && in_array($command, ["/start", "/agenda", "/apps", "/soporte"], true)) {
-    forzarMenuGrupo($chat_id);
-}
-
-// Botón del teclado del grupo para abrir el bot privado.
-if ($chat_type !== "private" && trim($text) === "🏠 MDPRIME Bot") {
-    sendInlineMessage($chat_id, "Pulsa el botón para abrir el chat privado:", [
-        "inline_keyboard" => [
-            [[
-                "text" => "🤖 Abrir MDPRIME Bot",
-                "url" => $bot_link
-            ]]
-        ]
-    ]);
-    http_response_code(200);
-    exit;
-}
 
 // En grupos, ignorar cualquier texto normal que no sea comando.
 // Así el bot no responde "Comando no reconocido" a conversaciones normales.
